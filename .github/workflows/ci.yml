@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/terraform-ci.yml
+    with:
+      diretorios: '["terraform"]'

@@ -1,0 +1,107 @@
+# CI reutilizavel dos projetos Maven (4 servicos e -auth).
+# Chamador: job "ci" com "uses: .../servico-ci.yml@v1" e "secrets: inherit".
+# O job tem id "build" e nenhum "name:", para o check aparecer como "ci / build".
+name: servico-ci
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Versao do Java (Temurin)
+        type: string
+        default: "21"
+      sonar-organization:
+        description: Organization key do SonarCloud
+        type: string
+        default: fiap-postech-soat-lf
+      terraform-version:
+        description: Versao do Terraform usada para validar o infra/
+        type: string
+        default: "1.15.8"
+    secrets:
+      SONAR_TOKEN:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Obter codigo (historico completo para o Sonar)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+          cache: maven
+
+      - name: Conferir SONAR_TOKEN
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [[ -z "$SONAR_TOKEN" ]]; then
+            echo "::error::Secret SONAR_TOKEN ausente. Use 'secrets: inherit' no chamador e confira o secret da org."
+            exit 1
+          fi
+
+      - name: Testes, cobertura e analise do SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ inputs.sonar-organization }}
+        run: |
+          if [[ -x ./mvnw ]]; then mvn_cmd=./mvnw; else mvn_cmd=mvn; fi
+          # O projectKey vem do pom; o token vai pela variavel de ambiente, nunca pela linha de comando.
+          "$mvn_cmd" -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.organization="$SONAR_ORGANIZATION" \
+            -Dsonar.host.url=https://sonarcloud.io
+
+      - name: Publicar relatorio do JaCoCo
+        if: ${{ always() && hashFiles('target/site/jacoco/index.html') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 7
+
+      - name: Detectar infra/ com Terraform
+        id: infra
+        run: |
+          if compgen -G "infra/*.tf" > /dev/null; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            echo "Sem arquivos .tf em infra/: validacao do Terraform pulada."
+          fi
+          if [[ -d infra/tests ]]; then
+            echo "testes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "testes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configurar Terraform
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        run: terraform -chdir=infra fmt -check -recursive -diff
+
+      - name: terraform init (sem backend)
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        run: terraform -chdir=infra init -backend=false -input=false
+
+      - name: terraform validate
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        run: terraform -chdir=infra validate -no-color
+
+      - name: terraform test
+        if: ${{ steps.infra.outputs.existe == 'true' && steps.infra.outputs.testes == 'true' }}
+        run: terraform -chdir=infra test -no-color

@@ -1,0 +1,274 @@
+# CD reutilizavel dos 4 servicos (escrito na F1, validado no primeiro deploy, na F3).
+# Chamador: job "cd" disparado pelo workflow_run do CI (ou workflow_dispatch), com
+# "with: servico: <svc>" e "secrets: inherit".
+# Ordem: terraform apply (cria o ECR) -> push da imagem -> ConfigMap/Secret -> kubectl apply.
+name: servico-cd
+
+on:
+  workflow_call:
+    inputs:
+      servico:
+        description: Nome curto do servico (identity, os, billing, execucao)
+        type: string
+        required: true
+      namespace:
+        description: Namespace Kubernetes
+        type: string
+        default: mecanica
+      aws-region:
+        description: Regiao AWS
+        type: string
+        default: us-east-1
+      terraform-version:
+        description: Versao do Terraform
+        type: string
+        default: "1.15.8"
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      AWS_SESSION_TOKEN:
+        required: false
+      MP_ACCESS_TOKEN:
+        required: false
+      MP_WEBHOOK_SECRET:
+        required: false
+
+jobs:
+  # Porteiro: sem o SSM do cluster (EKS desligado), o CD termina verde sem deploy.
+  ambiente:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ativo: ${{ steps.cluster.outputs.ativo }}
+      cluster: ${{ steps.cluster.outputs.cluster }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
+    steps:
+      - name: Validar credenciais do Academy
+        run: |
+          if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" || -z "$AWS_SESSION_TOKEN" ]]; then
+            echo "::error::Secrets AWS_* ausentes. Rode scripts/atualizar-credenciais.sh no -k8s."
+            exit 1
+          fi
+          if ! erro=$(aws sts get-caller-identity --query Account --output text 2>&1 >/dev/null); then
+            echo "::error::Credenciais AWS invalidas ou expiradas: rode scripts/atualizar-credenciais.sh no -k8s. Detalhe: $erro"
+            exit 1
+          fi
+
+      - name: Ler o nome do cluster no SSM
+        id: cluster
+        run: |
+          erro_ssm="$RUNNER_TEMP/ssm.err"
+          if nome=$(aws ssm get-parameter --name /mecanica/k8s/cluster-name \
+              --query Parameter.Value --output text 2>"$erro_ssm"); then
+            echo "ativo=true" >> "$GITHUB_OUTPUT"
+            echo "cluster=$nome" >> "$GITHUB_OUTPUT"
+            echo "Cluster ativo: $nome"
+          elif grep -q ParameterNotFound "$erro_ssm"; then
+            echo "ativo=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::EKS desligado (SSM /mecanica/k8s/cluster-name ausente); CD pulado."
+            echo "### EKS desligado; CD pulado" >> "$GITHUB_STEP_SUMMARY"
+          elif grep -Eq 'ExpiredToken|InvalidClientTokenId|UnrecognizedClient' "$erro_ssm"; then
+            echo "::error::Credenciais AWS expiradas: rode scripts/atualizar-credenciais.sh no -k8s. Detalhe: $(cat "$erro_ssm")"
+            exit 1
+          else
+            echo "::error::Falha ao ler o SSM: $(cat "$erro_ssm")"
+            exit 1
+          fi
+
+  deploy:
+    needs: ambiente
+    if: ${{ needs.ambiente.outputs.ativo == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: deploy-${{ inputs.servico }}
+      cancel-in-progress: false
+    env:
+      AWS_REGION: ${{ inputs.aws-region }}
+      NAMESPACE: ${{ inputs.namespace }}
+      SERVICO: ${{ inputs.servico }}
+      DEPLOYMENT: mecanica-${{ inputs.servico }}
+      CLUSTER_NAME: ${{ needs.ambiente.outputs.cluster }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - name: Obter o commit testado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Detectar infra/ com Terraform
+        id: infra
+        run: |
+          if compgen -G "infra/*.tf" > /dev/null; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            echo "Sem arquivos .tf em infra/: terraform, ConfigMap e Secret pulados."
+          fi
+
+      - name: Configurar Terraform
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: terraform init e apply
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        env:
+          # Variaveis nao declaradas no infra/ sao ignoradas pelo Terraform.
+          TF_VAR_mp_access_token: ${{ secrets.MP_ACCESS_TOKEN }}
+          TF_VAR_mp_webhook_secret: ${{ secrets.MP_WEBHOOK_SECRET }}
+        run: |
+          account_id=$(aws sts get-caller-identity --query Account --output text)
+          repo="${GITHUB_REPOSITORY#*/}"
+          terraform -chdir=infra init -input=false \
+            -backend-config="bucket=mecanica-tfstate-${account_id}" \
+            -backend-config="key=${repo}/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="use_lockfile=true"
+          terraform -chdir=infra apply -input=false -auto-approve
+
+      - name: Login no ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Resolver imagem e versao
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TEM_INFRA: ${{ steps.infra.outputs.existe }}
+        run: |
+          if [[ "$TEM_INFRA" == "true" ]]; then
+            repo_url=$(terraform -chdir=infra output -raw ecr_repository_url)
+          else
+            repo_url="${REGISTRY}/mecanica-${SERVICO}"
+          fi
+          {
+            echo "IMAGE=${repo_url}:${SHA}"
+            echo "VERSION=${SHA:0:7}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build e push da imagem
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Apontar o kubectl para o EKS
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Garantir o envsubst
+        run: |
+          if ! command -v envsubst > /dev/null; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends gettext-base
+          fi
+
+      - name: Garantir o namespace
+        run: kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: ConfigMap e Secret a partir dos outputs do Terraform
+        if: ${{ steps.infra.outputs.existe == 'true' }}
+        run: |
+          config_env="$RUNNER_TEMP/config.env"
+          secret_env="$RUNNER_TEMP/secret.env"
+          trap 'rm -f "$config_env" "$secret_env"' EXIT
+
+          terraform -chdir=infra output -json app_secrets > "$RUNNER_TEMP/secrets.json"
+          # Mascara cada valor antes de qualquer outro uso.
+          while IFS= read -r valor; do
+            if [[ -n "$valor" ]]; then echo "::add-mask::$valor"; fi
+          done < <(jq -r '.[]' "$RUNNER_TEMP/secrets.json")
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' "$RUNNER_TEMP/secrets.json" > "$secret_env"
+          rm -f "$RUNNER_TEMP/secrets.json"
+
+          terraform -chdir=infra output -json app_config \
+            | jq -r 'to_entries[] | "\(.key)=\(.value)"' > "$config_env"
+
+          kubectl create configmap "${DEPLOYMENT}-config" --namespace "$NAMESPACE" \
+            --from-env-file="$config_env" --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic "${DEPLOYMENT}-secret" --namespace "$NAMESPACE" \
+            --from-env-file="$secret_env" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Aplicar os manifestos k8s/
+        run: |
+          for nome in service deployment hpa ingressroute; do
+            arquivo="k8s/${nome}.yaml"
+            if [[ ! -f "$arquivo" ]]; then
+              echo "Pulando $arquivo (nao existe)."
+              continue
+            fi
+            # Lista explicita: outros "$" dos manifestos ficam intactos.
+            # shellcheck disable=SC2016
+            envsubst '${NAMESPACE} ${SERVICO} ${IMAGE} ${VERSION}' < "$arquivo" | kubectl apply -f -
+          done
+
+      - name: Esperar o rollout
+        id: rollout
+        run: kubectl rollout status "deployment/$DEPLOYMENT" --namespace "$NAMESPACE" --timeout=300s
+
+      - name: Conferir a injecao do agente OpenTelemetry
+        run: |
+          init_containers=$(kubectl get pods --namespace "$NAMESPACE" --selector "app=$DEPLOYMENT" \
+            --sort-by=.metadata.creationTimestamp \
+            --output jsonpath='{range .items[*]}{.spec.initContainers[*].name}{"\n"}{end}' | tail -n 1)
+          if ! grep -q opentelemetry-auto-instrumentation-java <<< "$init_containers"; then
+            echo "::error::Agente Java do OpenTelemetry nao foi injetado no pod mais novo de $DEPLOYMENT."
+            exit 1
+          fi
+
+      - name: Smoke do health
+        id: smoke
+        run: |
+          if api_url=$(aws ssm get-parameter --name /mecanica/auth/api-url \
+              --query Parameter.Value --output text 2>/dev/null); then
+            url="${api_url%/}/${SERVICO}/actuator/health"
+            curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors "$url"
+          else
+            url="http://127.0.0.1:18080/actuator/health/readiness (port-forward)"
+            kubectl port-forward "svc/$DEPLOYMENT" 18080:8080 --namespace "$NAMESPACE" &
+            pf_pid=$!
+            trap 'kill "$pf_pid"' EXIT
+            sleep 5
+            curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors \
+              http://127.0.0.1:18080/actuator/health/readiness
+          fi
+          echo
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Resumo
+        if: ${{ always() }}
+        env:
+          ROLLOUT: ${{ steps.rollout.outcome }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          URL: ${{ steps.smoke.outputs.url }}
+        run: |
+          {
+            echo "### Deploy de \`$DEPLOYMENT\`"
+            echo ""
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Cluster | \`$CLUSTER_NAME\` |"
+            echo "| Imagem | \`${IMAGE:-nao gerada}\` |"
+            echo "| Versao | \`${VERSION:-}\` |"
+            echo "| Rollout | ${ROLLOUT:-nao executado} |"
+            echo "| Smoke | ${SMOKE:-nao executado} |"
+            echo "| Health | ${URL:-} |"
+          } >> "$GITHUB_STEP_SUMMARY"

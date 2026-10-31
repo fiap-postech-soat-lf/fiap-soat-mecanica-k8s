@@ -1,0 +1,65 @@
+# CI reutilizavel dos repositorios so de Terraform (-db e -k8s).
+# Chamador: job "ci" com "uses: .../terraform-ci.yml@v1" (no -k8s, caminho local).
+# Um unico job "terraform" percorre os diretorios em laco (matrix mudaria o nome do
+# check para "ci / terraform (<dir>)" e quebraria o ruleset).
+name: terraform-ci
+
+on:
+  workflow_call:
+    inputs:
+      diretorios:
+        description: 'Diretorios Terraform em JSON (ex.: ["modules/rds-postgres"])'
+        type: string
+        required: true
+      terraform-version:
+        description: Versao do Terraform
+        type: string
+        default: "1.15.8"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: fmt, init, validate e test por diretorio
+        env:
+          DIRETORIOS: ${{ inputs.diretorios }}
+        run: |
+          mapfile -t dirs < <(jq -r '.[]' <<< "$DIRETORIOS")
+          if [[ ${#dirs[@]} -eq 0 ]]; then
+            echo "::error::Input 'diretorios' vazio ou invalido: $DIRETORIOS"
+            exit 1
+          fi
+          for dir in "${dirs[@]}"; do
+            echo "::group::$dir"
+            if [[ ! -d "$dir" ]]; then
+              echo "::error::Diretorio '$dir' nao existe no repositorio."
+              exit 1
+            fi
+            terraform -chdir="$dir" fmt -check -recursive -diff
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate -no-color
+            if [[ -d "$dir/tests" ]]; then
+              terraform -chdir="$dir" test -no-color
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: shellcheck dos scripts
+        if: ${{ hashFiles('scripts/*.sh', 'local/**/*.sh') != '' }}
+        run: |
+          mapfile -t scripts < <(find scripts local -name '*.sh' -type f 2>/dev/null | sort)
+          shellcheck "${scripts[@]}"
+
+      - name: Validar o docker compose local
+        if: ${{ hashFiles('local/docker-compose.yml') != '' }}
+        run: docker compose -f local/docker-compose.yml config -q

@@ -1,0 +1,43 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Backend e variaveis locais (contem nome de bucket/segredos por conta)
+backend.hcl
+*.auto.tfvars
+terraform.tfvars
+!**/terraform.tfvars.example
+
+# Kubeconfig gerado localmente
+kubeconfig
+kubeconfig.*
+
+# Credenciais e chaves (nada de segredo versionado)
+.aws-credentials
+*.pem
+.env
+.env.*
+!.env.example
+
+# Ambiente local (docker compose / LocalStack)
+local/volume/
+
+# Template do servico (build local do Maven)
+templates/**/target/
+
+# IDEs e sistema
+.idea/
+.vscode/
+.DS_Store
+*.log
