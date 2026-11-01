@@ -1,0 +1,26 @@
+# CLAUDE.md — fiap-soat-mecanica-servicobase
+
+Microsserviço `servicobase` da Fase 4 (Oficina Mecânica do Braia), gerado a partir de `fiap-soat-mecanica-k8s/templates/servico-base/`.
+
+## Planejamento (fonte da verdade)
+- Plano geral: `/home/rede/git/tech_challenge/PLANEJAMENTO_FASE4_INDIVIDUAL.md` (seção do serviço)
+- Convenções, contratos e regras de mensageria: `/home/rede/git/tech_challenge/planejamentos_por_fase/F1_fundacao_contratos_esqueleto.md` (seções 3, 6 e 7)
+- Código de referência do monolito, **só leitura**: `/home/rede/git/fiap-soat-mecanica-api`
+
+## Comandos
+- `./mvnw verify` (testes unitários e de integração com Testcontainers; cobertura ≥ 80% de linhas)
+- `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`
+- `docker compose -f ../fiap-soat-mecanica-k8s/local/docker-compose.yml up -d` (LocalStack + Postgres)
+
+## Regras
+- Camadas hexagonais: `domain/` e `application/` não importam `adapters` nem Spring Web.
+- Nada de segredo versionado.
+- Cobertura ≥ 80% sem excluir pacotes.
+- Mensagens sempre via `OutboxPort` (nunca publicar direto no caso de uso).
+- Contratos (`docs/contratos/`) só mudam pela regra de congelamento (seção 7.3 do plano da F1).
+- Correções no que veio do esqueleto (`config/`, `security/`, `messaging/`, `k8s/`, workflows) são feitas primeiro no template do `-k8s` e propagadas (`scripts/comparar-esqueleto.sh`).
+
+## Fluxo de trabalho
+- Branch curta (`feat/`, `fix/`, `chore/`, `docs/`) → PR → `gh pr merge --auto --squash --delete-branch`.
+- Commits em Conventional Commits, em português.
+- A `main` é protegida por ruleset (PR + checks `ci / build` e `SonarCloud Code Analysis`).

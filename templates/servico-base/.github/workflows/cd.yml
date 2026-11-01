@@ -1,0 +1,19 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cd:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    uses: fiap-postech-soat-lf/fiap-soat-mecanica-k8s/.github/workflows/servico-cd.yml@v1
+    with:
+      servico: servicobase
+    secrets: inherit

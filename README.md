@@ -24,7 +24,7 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 |---|---|
 | `scripts/` | Scripts de administração da org e da conta AWS (criação de repos, secrets, ruleset, bootstrap do state, geração de serviço) |
 | `.github/workflows/` | Reusable workflows `servico-ci.yml`, `servico-cd.yml` e `terraform-ci.yml` (tag `v1`) e o `ci.yml` deste repo |
-| `templates/servico-base/` | *TODO (F1)* Esqueleto comum dos 4 serviços |
+| `templates/servico-base/` | Esqueleto comum dos 4 serviços (placeholder `servicobase`; partes só de SQL entre marcadores `[SQL]`/`[/SQL]`), validado pelo workflow `template.yml` |
 | `local/` | *TODO (F1)* `docker compose` com LocalStack e Postgres para desenvolvimento |
 | `terraform/` | Base (versions, backend S3, provider `aws`). *TODO (F2)* EKS, NLB, Traefik e OpenTelemetry |
 | `docs/` | *TODO (F1)* Contratos, convenções e ADRs da Fase 4 |

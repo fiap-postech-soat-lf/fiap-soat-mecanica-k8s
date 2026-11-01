@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mecanica-${SERVICO}
+  namespace: ${NAMESPACE}
+  labels:
+    app: mecanica-${SERVICO}
+    tags.datadoghq.com/env: "prd"
+    tags.datadoghq.com/service: "mecanica-${SERVICO}"
+    tags.datadoghq.com/version: "${VERSION}"
+spec:
+  replicas: 1 # o HPA assume a partir daqui
+  selector:
+    matchLabels:
+      app: mecanica-${SERVICO}
+  template:
+    metadata:
+      labels:
+        app: mecanica-${SERVICO}
+        tags.datadoghq.com/env: "prd"
+        tags.datadoghq.com/service: "mecanica-${SERVICO}"
+        tags.datadoghq.com/version: "${VERSION}"
+      annotations:
+        # Instrucao para o Operator injetar o agente Java automaticamente
+        instrumentation.opentelemetry.io/inject-java: "java-instrumentation"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mecanica-${SERVICO}
+          image: ${IMAGE}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: mecanica-${SERVICO}-secret
+            - configMapRef:
+                name: mecanica-${SERVICO}-config
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75"
+            - name: DD_ENV
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/env']
+            - name: DD_SERVICE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/service']
+            - name: DD_VERSION
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['tags.datadoghq.com/version']
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            failureThreshold: 6
+            periodSeconds: 5
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "384Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true # Bloqueia o disco contra gravacoes indevidas
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp # Necessario para o Spring Boot rodar com readOnlyRootFilesystem
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}

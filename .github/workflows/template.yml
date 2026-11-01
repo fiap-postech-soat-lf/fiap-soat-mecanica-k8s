@@ -1,0 +1,48 @@
+# Compila e testa o esqueleto dos servicos quando ele muda. Nao e check obrigatorio do ruleset
+# (workflow filtrado por caminho ficaria pendente nos PRs que nao tocam o template).
+name: Template
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "templates/servico-base/**"
+      - ".github/workflows/template.yml"
+  push:
+    branches: [main]
+    paths:
+      - "templates/servico-base/**"
+      - ".github/workflows/template.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  servico-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: templates/servico-base
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: templates/servico-base/pom.xml
+
+      - name: Testes e cobertura (sem Sonar)
+        run: ./mvnw -B verify
+
+      - name: Publicar relatorio do JaCoCo
+        if: ${{ always() && hashFiles('templates/servico-base/target/site/jacoco/index.html') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-template
+          path: templates/servico-base/target/site/jacoco/
+          retention-days: 7
