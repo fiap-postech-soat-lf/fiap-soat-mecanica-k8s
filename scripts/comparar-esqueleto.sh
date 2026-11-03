@@ -45,6 +45,7 @@ CAMINHOS=(
   "k8s"
   ".github"
   "Dockerfile"
+  "docs/contratos/envelope.schema.json"
 )
 
 diferente=false
