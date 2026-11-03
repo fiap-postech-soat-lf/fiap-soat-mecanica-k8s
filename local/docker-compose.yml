@@ -1,0 +1,68 @@
+# Infra local da Fase 4: LocalStack (SNS, SQS, DynamoDB, Secrets Manager, SSM) e um Postgres por servico SQL.
+# Os servicos Java rodam fora do compose: ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+# Uso: docker compose -f local/docker-compose.yml up -d && local/verificar.sh
+name: mecanica-local
+
+services:
+  localstack:
+    # Ultima tag 4.x (edicao community, sem token); a mesma do IntegracaoTest do template
+    image: localstack/localstack:4.14.0
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sns,sqs,dynamodb,secretsmanager,ssm
+      AWS_DEFAULT_REGION: us-east-1
+      # So necessario se a imagem passar a exigir conta (ver local/README.md)
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:-}
+    volumes:
+      - ./localstack/init/ready.d:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      # Saudavel so depois que os scripts de init (filas, topicos, assinaturas) terminaram
+      test: ["CMD-SHELL", "curl -fs http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": *true'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  postgres-identity:
+    image: postgres:17-alpine
+    ports:
+      - "5433:5432"
+    environment: &postgres-env
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: identity
+    volumes:
+      - postgres-identity:/var/lib/postgresql/data
+    healthcheck: &postgres-health
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres-os:
+    image: postgres:17-alpine
+    ports:
+      - "5434:5432"
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: os
+    volumes:
+      - postgres-os:/var/lib/postgresql/data
+    healthcheck: *postgres-health
+
+  postgres-billing:
+    image: postgres:17-alpine
+    ports:
+      - "5435:5432"
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: billing
+    volumes:
+      - postgres-billing:/var/lib/postgresql/data
+    healthcheck: *postgres-health
+
+volumes:
+  postgres-identity:
+  postgres-os:
+  postgres-billing:
