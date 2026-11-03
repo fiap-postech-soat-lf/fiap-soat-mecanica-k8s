@@ -7,11 +7,13 @@ on:
     branches: [main]
     paths:
       - "templates/servico-base/**"
+      - "docs/contratos/envelope.schema.json"
       - ".github/workflows/template.yml"
   push:
     branches: [main]
     paths:
       - "templates/servico-base/**"
+      - "docs/contratos/envelope.schema.json"
       - ".github/workflows/template.yml"
 
 permissions:
@@ -27,6 +29,10 @@ jobs:
     steps:
       - name: Obter codigo
         uses: actions/checkout@v4
+
+      - name: Envelope do template igual ao de docs/contratos
+        working-directory: .
+        run: cmp docs/contratos/envelope.schema.json templates/servico-base/docs/contratos/envelope.schema.json
 
       - name: Configurar Java
         uses: actions/setup-java@v4

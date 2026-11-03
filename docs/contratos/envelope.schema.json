@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MensagemEnvelope",
+  "description": "Envelope comum das mensagens assincronas da Fase 4. Congelado na F1: campo novo so como opcional; mudanca incompativel cria uma nova versao do tipo.",
+  "type": "object",
+  "required": ["messageId", "type", "version", "correlationId", "occurredAt", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "messageId": {
+      "description": "Identificador unico da mensagem (chave de idempotencia do consumidor).",
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "description": "Tipo da mensagem (ex.: ReservarPecas). O schema do payload e <type>.v<version>.schema.json.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sagaId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "osId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlationId": {
+      "description": "Id que acompanha a requisicao de origem e todas as mensagens derivadas dela.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "causationId": {
+      "description": "messageId da mensagem que causou esta, quando houver.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "traceparent": {
+      "description": "Contexto W3C do span que publicou a mensagem (propagacao do trace pelo SNS/SQS).",
+      "type": "string",
+      "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
