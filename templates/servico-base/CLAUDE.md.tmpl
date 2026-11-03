@@ -16,7 +16,10 @@ Microsserviço `servicobase` da Fase 4 (Oficina Mecânica do Braia), gerado a pa
 - Camadas hexagonais: `domain/` e `application/` não importam `adapters` nem Spring Web.
 - Nada de segredo versionado.
 - Cobertura ≥ 80% sem excluir pacotes.
-- Mensagens sempre via `OutboxPort` (nunca publicar direto no caso de uso).
+- Mensagens sempre via `OutboxPort` (nunca publicar direto no caso de uso), com o envelope criado pelo `MensagemFactory`.
+- Consumo: um `MensagemHandler` por tipo; não apagar nem confirmar mensagem no handler (o `SqsConsumidor` cuida disso).
+- Migrations: `V1__mensageria.sql` vem do esqueleto; as de domínio começam em `V2`.
+- Testes de integração estendem `IntegracaoTest` **sem** `@SpringBootTest`, `@Import`, `@TestPropertySource` ou `@MockitoBean` próprios (um único contexto Spring para todos os ITs); beans de teste vão em `support/ComponentesDeTeste`.
 - Contratos (`docs/contratos/`) só mudam pela regra de congelamento (seção 7.3 do plano da F1).
 - Correções no que veio do esqueleto (`config/`, `security/`, `messaging/`, `k8s/`, workflows) são feitas primeiro no template do `-k8s` e propagadas (`scripts/comparar-esqueleto.sh`).
 

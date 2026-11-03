@@ -4,13 +4,7 @@ import br.com.fiap.soat.mecanica.servicobase.support.IntegracaoTest;
 import br.com.fiap.soat.mecanica.servicobase.support.JwtTestTokens;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -21,9 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@Import(SegurancaIT.RotaDeTeste.class)
 class SegurancaIT extends IntegracaoTest {
 
     @Autowired
@@ -102,15 +93,5 @@ class SegurancaIT extends IntegracaoTest {
         mockMvc.perform(get("/teste/mecanico").header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.status").value(403));
-    }
-
-    @RestController
-    static class RotaDeTeste {
-
-        @GetMapping("/teste/mecanico")
-        @PreAuthorize("hasRole('MECANICO')")
-        String mecanico() {
-            return UsuarioAutenticado.atual().orElseThrow().sub().toString();
-        }
     }
 }
