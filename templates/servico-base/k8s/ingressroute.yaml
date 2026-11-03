@@ -1,0 +1,36 @@
+# Rotas do servico no Traefik (tabela 7.4 / docs/contratos/rotas.md do -k8s).
+# 1) prefixos de recurso, encaminhados sem alteracao;
+# 2) /<svc>/... (health e Swagger), com StripPrefix: o Traefik envia X-Forwarded-Prefix e o
+#    Spring (server.forward-headers-strategy=framework) gera os links do Swagger com o prefixo.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: mecanica-${SERVICO}-strip-prefix
+  namespace: ${NAMESPACE}
+spec:
+  stripPrefix:
+    prefixes:
+      - /${SERVICO}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mecanica-${SERVICO}
+  namespace: ${NAMESPACE}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      # Trocado pelo novo-servico.sh pelos prefixos do servico (ex.: PathPrefix(`/clientes`) || PathPrefix(`/veiculos`))
+      match: __ROTAS_MATCH__
+      services:
+        - name: mecanica-${SERVICO}
+          port: 8080
+    - kind: Rule
+      match: PathPrefix(`/${SERVICO}`)
+      middlewares:
+        - name: mecanica-${SERVICO}-strip-prefix
+      services:
+        - name: mecanica-${SERVICO}
+          port: 8080

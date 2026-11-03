@@ -1,0 +1,36 @@
+# Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Terraform (infra/ do servico)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+backend.hcl
+*.auto.tfvars
+**/terraform.tfvars
+!**/terraform.tfvars.example
+
+# Credenciais e chaves (nada de segredo versionado)
+.env
+.env.*
+!.env.example
+.aws-credentials
+*.pem
+
+# IDEs e sistema
+.idea
+*.iws
+*.iml
+*.ipr
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+.vscode/
+.DS_Store
+*.log
+HELP.md

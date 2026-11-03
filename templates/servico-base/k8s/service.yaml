@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mecanica-${SERVICO}
+  namespace: ${NAMESPACE}
+spec:
+  type: ClusterIP # a entrada externa e so o NodePort do Traefik
+  selector:
+    app: mecanica-${SERVICO}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

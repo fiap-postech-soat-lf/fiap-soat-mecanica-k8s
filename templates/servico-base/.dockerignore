@@ -1,0 +1,10 @@
+target/
+.git/
+.github/
+.mvn/wrapper/maven-wrapper.jar
+docs/
+infra/
+k8s/
+*.md
+.idea/
+.vscode/
