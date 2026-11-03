@@ -35,7 +35,13 @@ public class SecurityConfig {
             "/error"
     };
 
+    /**
+     * API stateless: a autenticacao e so pelo bearer token no header Authorization, sem cookie de sessao,
+     * entao o navegador nao envia credencial automaticamente e nao ha o que um ataque CSRF explorar.
+     * Por isso o CSRF fica desligado (java:S4502 revisada).
+     */
     @Bean
+    @SuppressWarnings("java:S4502")
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtTokenValidator validator,
                                                    ObjectMapper objectMapper) throws Exception {
         return http
