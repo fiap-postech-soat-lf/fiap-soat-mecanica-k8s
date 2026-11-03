@@ -25,6 +25,12 @@ Microsserviço **servicobase** da **Fase 4** da Oficina Mecânica do Braia (Tech
 
 *TODO*: eventos publicados e comandos consumidos (contratos em `docs/contratos/`).
 
+Como o esqueleto funciona:
+
+- **Publicar:** dentro da transação do caso de uso, `outbox.registrar("<destino>", mensagemFactory.criar("<Tipo>", 1, payload))`. O `OutboxPublisher` publica a cada 1 s (lotes de 50, `FOR UPDATE SKIP LOCKED`). O `MensagemFactory` preenche `messageId`, `correlationId`, `causationId` e `traceparent`.
+- **Consumir:** um bean `MensagemHandler` por tipo. O `SqsConsumidor` faz long polling nas filas de `app.messaging.consumidor.filas`, e o `ProcessadorMensagemSql` garante a idempotência pelo `messageId` na mesma transação do handler. Exceção no handler devolve a mensagem para a fila (DLQ depois de 5 recebimentos).
+- **Configurar:** `app.messaging.destinos.<nome>` (ARN do tópico ou URL da fila), `app.messaging.consumidor.filas` e `app.messaging.dlqs` (gauge `dlq.depth{fila}`), com os valores vindos do ConfigMap (ver `infra/README.md`).
+
 ## Como rodar localmente
 
 ```bash

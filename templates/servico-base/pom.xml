@@ -147,6 +147,13 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
+			<!-- Linha 3.x (usa Jackson 3, so no classpath de teste) -->
+			<groupId>com.networknt</groupId>
+			<artifactId>json-schema-validator</artifactId>
+			<version>3.0.8</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>org.awaitility</groupId>
 			<artifactId>awaitility</artifactId>
 			<scope>test</scope>
