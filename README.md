@@ -27,7 +27,7 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | `templates/servico-base/` | Esqueleto comum dos 4 serviços (placeholder `servicobase`; partes só de SQL entre marcadores `[SQL]`/`[/SQL]`), validado pelo workflow `template.yml` |
 | `local/` | `docker compose` com LocalStack (mensageria da tabela 3.4) e os Postgres dos serviços SQL, `verificar.sh` e JWT de dev (ver `local/README.md`) |
 | `terraform/` | Base (versions, backend S3, provider `aws`). *TODO (F2)* EKS, NLB, Traefik e OpenTelemetry |
-| `docs/` | *TODO (F1)* Contratos, convenções e ADRs da Fase 4 |
+| `docs/` | `contratos/` (convenções, envelope, JWT e rotas; ver `docs/contratos/convencoes.md`) e `arquitetura-fase4/adr/` (ADRs transversais F4-01 a 05, 11 e 14) |
 
 ## Reusable workflows
 
