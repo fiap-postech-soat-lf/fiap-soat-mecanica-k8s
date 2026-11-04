@@ -26,7 +26,7 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | `.github/workflows/` | Reusable workflows `servico-ci.yml`, `servico-cd.yml` e `terraform-ci.yml` (tag `v1`) e o `ci.yml` deste repo |
 | `templates/servico-base/` | Esqueleto comum dos 4 serviços (placeholder `servicobase`; partes só de SQL entre marcadores `[SQL]`/`[/SQL]`), validado pelo workflow `template.yml` |
 | `local/` | `docker compose` com LocalStack (mensageria da tabela 3.4) e os Postgres dos serviços SQL, `verificar.sh` e JWT de dev (ver `local/README.md`) |
-| `terraform/` | Base (versions, backend S3, provider `aws`). *TODO (F2)* EKS, NLB, Traefik e OpenTelemetry |
+| `terraform/` | EKS 1.37 + node group (3 × t3.medium, launch template IMDSv2 hop 2), add-on metrics-server, Traefik (NodePort 30090), OpenTelemetry Operator, NLB público na frente do Traefik e os parâmetros SSM `/mecanica/k8s/*`. Só roda pelo workflow `cluster.yml` (F2) |
 | `docs/` | `contratos/` (convenções, envelope, JWT e rotas; ver `docs/contratos/convencoes.md`) e `arquitetura-fase4/adr/` (ADRs transversais F4-01 a 05, 11 e 14) |
 
 ## Reusable workflows
