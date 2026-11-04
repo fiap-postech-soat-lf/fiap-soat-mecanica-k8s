@@ -33,6 +33,8 @@ curl -H "Authorization: Bearer $TOKEN" localhost:8081/clientes
 
 O token segue o contrato do Identity (RS256, `kid=mecanica-identity-v1`, `iss`, `aud`, `sub`, `principal_type`, `cargo`, 1 h). O perfil `local` dos serviços lê a chave pública em `../fiap-soat-mecanica-k8s/local/jwt/dev-public.pem`. Com `gerar-chaves-dev.sh --forcar`, o par é trocado e os tokens antigos deixam de valer.
 
+Duas variáveis mudam o token: `CHAVE_PRIVADA=<arquivo>` assina com outra chave (o `scripts/smoke-borda.sh` usa a do Identity, lida do Secrets Manager) e `EMITIDO_HA_SEGUNDOS=<n>` recua o `iat` e o `exp` (`7200` gera um token vencido há 1 h).
+
 ## Mensageria
 
 - Filas padrão com `VisibilityTimeout=30`, retenção de 4 dias e redrive para a `-dlq` após 5 recebimentos.

@@ -1,0 +1,159 @@
+# Destroi o ambiente inteiro na ordem inversa da B4: borda (-auth) -> servicos -> cluster,
+# e confere os orfaos. Roda no GitHub porque leva ~20 min e nao pode depender do notebook.
+# Os repositorios dos servicos sao publicos: o clone dispensa token.
+# Disparado pelo scripts/destruir-ambiente.sh (ou pela aba Actions, digitando "destruir").
+name: Destruir ambiente
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmacao:
+        description: 'Digite "destruir" para confirmar'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente
+  cancel-in-progress: false
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+  AWS_REGION: us-east-1
+  AWS_DEFAULT_REGION: us-east-1
+  ORG: ${{ github.repository_owner }}
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  confirmar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Conferir a confirmacao
+        env:
+          CONFIRMACAO: ${{ inputs.confirmacao }}
+        run: |
+          if [[ "$CONFIRMACAO" != "destruir" ]]; then
+            echo "::error::Confirmacao invalida: digite exatamente \"destruir\"."
+            exit 1
+          fi
+
+      - name: Validar credenciais do Academy
+        run: |
+          if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" || -z "$AWS_SESSION_TOKEN" ]]; then
+            echo "::error::Secrets AWS_* ausentes. Rode scripts/atualizar-credenciais.sh no -k8s."
+            exit 1
+          fi
+          if ! erro=$(aws sts get-caller-identity --query Account --output text 2>&1 >/dev/null); then
+            echo "::error::Credenciais AWS invalidas ou expiradas: rode scripts/atualizar-credenciais.sh no -k8s. Detalhe: $erro"
+            exit 1
+          fi
+
+  borda:
+    needs: confirmar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Destruir o -auth
+        run: |
+          repo=fiap-soat-mecanica-auth
+          dir="$RUNNER_TEMP/$repo"
+          git clone --quiet --depth 1 "https://github.com/${ORG}/${repo}.git" "$dir"
+          if ! compgen -G "$dir/infra/*.tf" > /dev/null; then
+            echo "$repo sem infra/*.tf: pulado."
+            exit 0
+          fi
+          # O filebase64sha256 do artefato da Lambda e avaliado ate no destroy.
+          mkdir -p "$dir/target"
+          touch "$dir/target/auth-lambda.jar"
+          scripts/destruir-stack.sh "$dir/infra" "$repo/terraform.tfstate"
+
+  servicos:
+    needs: borda
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Variaveis nao declaradas no infra/ sao ignoradas pelo Terraform.
+      TF_VAR_mp_access_token: ${{ secrets.MP_ACCESS_TOKEN }}
+      TF_VAR_mp_webhook_secret: ${{ secrets.MP_WEBHOOK_SECRET }}
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      # Laco, e nao matrix: a matrix nao garante a ordem (inversa da B4).
+      - name: Destruir os servicos
+        run: |
+          for svc in identity os execucao billing; do
+            repo="fiap-soat-mecanica-$svc"
+            dir="$RUNNER_TEMP/$repo"
+            git clone --quiet --depth 1 "https://github.com/${ORG}/${repo}.git" "$dir"
+            if ! compgen -G "$dir/infra/*.tf" > /dev/null; then
+              echo "$repo sem infra/*.tf: pulado."
+              continue
+            fi
+            echo "::group::$repo"
+            scripts/destruir-stack.sh "$dir/infra" "$repo/terraform.tfstate"
+            echo "::endgroup::"
+          done
+
+  # Depois dos servicos: o SG de cada RDS referencia o SG do cluster, e o EKS nao apaga
+  # um SG referenciado.
+  cluster:
+    needs: servicos
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Destruir o cluster
+        run: scripts/destruir-stack.sh terraform fiap-soat-mecanica-k8s/terraform.tfstate
+
+  # Roda mesmo se um destroy falhar, para mostrar o que sobrou.
+  orfaos:
+    needs: [confirmar, cluster]
+    if: ${{ always() && needs.confirmar.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Verificar orfaos
+        run: |
+          rc=0
+          scripts/verificar-orfaos.sh > "$RUNNER_TEMP/orfaos.txt" 2>&1 || rc=$?
+          cat "$RUNNER_TEMP/orfaos.txt"
+          {
+            echo "### Orfaos depois do destroy"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/orfaos.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"

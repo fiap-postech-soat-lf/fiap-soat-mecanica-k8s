@@ -1,0 +1,94 @@
+# Echo de diagnostico da borda (ADR-F4-06): o whoami devolve os headers recebidos, o que
+# prova que o API Gateway injetou x-user-* e x-correlation-id. Rota /health-echo, protegida
+# pelo authorizer no API Gateway. Aplicado pelo cluster.yml (envsubst do placeholder namespace).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mecanica-echo
+  namespace: ${namespace}
+  labels:
+    app: mecanica-echo
+    app.kubernetes.io/part-of: fiap-soat-mecanica
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mecanica-echo
+  template:
+    metadata:
+      labels:
+        app: mecanica-echo
+        app.kubernetes.io/part-of: fiap-soat-mecanica
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.12.0
+          args:
+            - --port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mecanica-echo
+  namespace: ${namespace}
+  labels:
+    app: mecanica-echo
+    app.kubernetes.io/part-of: fiap-soat-mecanica
+spec:
+  type: ClusterIP
+  selector:
+    app: mecanica-echo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mecanica-echo
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/part-of: fiap-soat-mecanica
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: PathPrefix(`/health-echo`)
+      services:
+        - name: mecanica-echo
+          port: 80

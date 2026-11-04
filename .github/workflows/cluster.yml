@@ -1,0 +1,153 @@
+# Sobe o cluster compartilhado: terraform apply de terraform/ (EKS, nodes, Traefik, OTel
+# operator, NLB, SSM) -> manifestos de k8s/ -> smoke direto no NLB.
+# So por workflow_dispatch (F2-f): merge no -k8s nao liga o EKS. Disparado pelo
+# scripts/subir-ambiente.sh como primeira etapa da ordem B4.
+name: Cluster
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ambiente
+  cancel-in-progress: false
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+  AWS_REGION: us-east-1
+  AWS_DEFAULT_REGION: us-east-1
+  NAMESPACE: mecanica
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  cluster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Marcar o inicio
+        run: echo "INICIO=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Validar credenciais do Academy
+        run: |
+          if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" || -z "$AWS_SESSION_TOKEN" ]]; then
+            echo "::error::Secrets AWS_* ausentes. Rode scripts/atualizar-credenciais.sh no -k8s."
+            exit 1
+          fi
+          if ! erro=$(aws sts get-caller-identity --query Account --output text 2>&1 >/dev/null); then
+            echo "::error::Credenciais AWS invalidas ou expiradas: rode scripts/atualizar-credenciais.sh no -k8s. Detalhe: $erro"
+            exit 1
+          fi
+
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: terraform init e apply
+        run: |
+          account_id=$(aws sts get-caller-identity --query Account --output text)
+          terraform -chdir=terraform init -input=false \
+            -backend-config="bucket=mecanica-tfstate-${account_id}" \
+            -backend-config="key=fiap-soat-mecanica-k8s/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="use_lockfile=true"
+          terraform -chdir=terraform apply -input=false -auto-approve
+          {
+            echo "CLUSTER_NAME=$(terraform -chdir=terraform output -raw cluster_name)"
+            echo "NLB_DNS=$(terraform -chdir=terraform output -raw nlb_dns_name)"
+            echo "OTEL_OPERATOR_NAMESPACE=$(terraform -chdir=terraform output -raw opentelemetry_operator_namespace)"
+          } >> "$GITHUB_ENV"
+
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Apontar o kubectl para o EKS
+        run: aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+
+      - name: Garantir o envsubst
+        run: |
+          if ! command -v envsubst > /dev/null; then
+            sudo apt-get update -y
+            sudo apt-get install -y --no-install-recommends gettext-base
+          fi
+
+      - name: Esperar o OpenTelemetry Operator e os CRDs
+        run: |
+          kubectl wait --namespace "$OTEL_OPERATOR_NAMESPACE" --for=condition=Available deployment \
+            --selector=app.kubernetes.io/name=opentelemetry-operator --timeout=180s
+          kubectl wait --for=condition=Established crd/opentelemetrycollectors.opentelemetry.io --timeout=60s
+          kubectl wait --for=condition=Established crd/instrumentations.opentelemetry.io --timeout=60s
+
+      # Lista explicita no envsubst: os $${env:...} do collector ficam intactos.
+      - name: Namespace e RBAC do collector
+        run: |
+          # shellcheck disable=SC2016
+          namespace="$NAMESPACE" envsubst '${namespace}' < k8s/namespace.yaml | kubectl apply -f -
+          # shellcheck disable=SC2016
+          namespace="$NAMESPACE" envsubst '${namespace}' < k8s/otel-rbac.yaml | kubectl apply -f -
+
+      - name: Secret do Datadog
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+        run: |
+          if [[ -z "$DATADOG_API_KEY" ]]; then
+            echo "::error::Secret DATADOG_API_KEY ausente: rode scripts/atualizar-credenciais.sh --fixos no -k8s."
+            exit 1
+          fi
+          # Valor pela entrada padrao: nunca aparece em argumento de processo.
+          printf '%s' "$DATADOG_API_KEY" \
+            | kubectl create secret generic otel-datadog-secret --namespace "$NAMESPACE" \
+                --from-file=DD_API_KEY=/dev/stdin --dry-run=client -o yaml \
+            | kubectl apply -f -
+
+      - name: Collector, Instrumentation e echo
+        run: |
+          # shellcheck disable=SC2016
+          namespace="$NAMESPACE" cluster_name="$CLUSTER_NAME" envsubst '${namespace} ${cluster_name}' \
+            < k8s/collector.yaml | kubectl apply -f -
+          # shellcheck disable=SC2016
+          namespace="$NAMESPACE" envsubst '${namespace}' < k8s/instrumentation.yaml | kubectl apply -f -
+          # shellcheck disable=SC2016
+          namespace="$NAMESPACE" envsubst '${namespace}' < k8s/echo.yaml | kubectl apply -f -
+
+      - name: Esperar o collector e o echo
+        run: |
+          # O operator cria o DaemonSet de forma assincrona a partir do OpenTelemetryCollector.
+          for _ in $(seq 1 24); do
+            kubectl get daemonset/otel-daemonset-collector --namespace "$NAMESPACE" > /dev/null 2>&1 && break
+            sleep 5
+          done
+          kubectl rollout status daemonset/otel-daemonset-collector --namespace "$NAMESPACE" --timeout=180s
+          kubectl rollout status deployment/mecanica-echo --namespace "$NAMESPACE" --timeout=120s
+
+      - name: Smoke direto no NLB
+        id: smoke
+        run: |
+          # O registro dos targets no NLB leva 2-3 min.
+          curl --fail --silent --show-error --output /dev/null --write-out 'HTTP %{http_code}\n' \
+            --max-time 10 --retry 24 --retry-delay 10 --retry-all-errors "http://${NLB_DNS}/health-echo"
+
+      - name: Resumo
+        if: ${{ always() }}
+        env:
+          SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          duracao=$(( $(date +%s) - INICIO ))
+          {
+            echo "### Cluster"
+            echo ""
+            echo "| Item | Valor |"
+            echo "|---|---|"
+            echo "| Cluster | \`${CLUSTER_NAME:-nao criado}\` |"
+            echo "| NLB | \`${NLB_DNS:-}\` |"
+            echo "| Smoke \`/health-echo\` | ${SMOKE:-nao executado} |"
+            printf '| Duracao do job | %dm%02ds |\n' $((duracao / 60)) $((duracao % 60))
+          } >> "$GITHUB_STEP_SUMMARY"
