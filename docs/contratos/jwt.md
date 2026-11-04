@@ -55,12 +55,33 @@ O token aceito vira as authorities `ROLE_<principal_type>` e, para funcionário,
 
 | Onde | O quê |
 |---|---|
-| Secrets Manager `mecanica-identity-jwt` | `{ "privateKeyPem": ..., "publicKeyPem": ... }`; o ARN fica no SSM `/mecanica/identity/jwt-secret-arn` (criado na F2) |
-| Serviços (EKS) | Chave pública em `JWT_PUBLIC_KEY` (`app.security.jwt.public-key`), aceita como PEM ou PEM com `\n` escapado |
-| Ambiente local | Par de dev de `local/jwt/gerar-chaves-dev.sh` (ignorado pelo git); tokens com `local/jwt/gerar-token-dev.sh <CLIENTE\|ATENDENTE\|MECANICO\|ALMOXARIFE> [sub]` |
+| Terraform do Identity (`infra/jwt.tf`) | Gera o par: `tls_private_key` RSA 2048, a cada janela de integração |
+| Secrets Manager `mecanica-identity-jwt` | `{ "privateKeyPem": ..., "publicKeyPem": ... }` (privada em PKCS#8); o ARN fica no SSM `/mecanica/identity/jwt-secret-arn` |
+| SSM `/mecanica/identity/jwt-public-key` | Chave pública (String), lida pelo `infra/` do `-auth` e passada à Lambda como `JWT_PUBLIC_KEY` |
+| Serviços (EKS) | Chave pública em `JWT_PUBLIC_KEY` (`app.security.jwt.public-key`), aceita como PEM ou PEM com `\n` escapado; vem do `app_config` do Identity |
+| Ambiente local | Par de dev de `local/jwt/gerar-chaves-dev.sh` (ignorado pelo git); tokens com `local/jwt/gerar-token-dev.sh <CLIENTE\|ATENDENTE\|MECANICO\|ALMOXARIFE> [sub]` (`CHAVE_PRIVADA=<arquivo>` assina com outra chave) |
 
-Sem chave configurada, o serviço sobe e rejeita todo token (`chave_publica_ausente`).
+- Cada janela gera um par novo, então os tokens de janelas anteriores deixam de valer.
+- A chave privada fica também no state do Terraform do Identity (bucket privado, criptografado e versionado). Isso é aceito e registrado na ADR-F4-07.
+- A Lambda não lê o Secrets Manager nem tem acesso à chave privada. Trocar a chave exige reaplicar o `-auth` depois do Identity (o `subir-ambiente.sh` já segue essa ordem).
+
+Sem chave configurada, o serviço (e a Lambda) sobe e rejeita todo token (`chave_publica_ausente`).
+
+## Authorizer na borda
+
+O Lambda Authorizer (`mecanica-authorizer`, do `-auth`) aplica as mesmas regras da validação nos serviços, sem Spring. Ele é um authorizer `REQUEST` do HTTP API, com payload 2.0 e resposta simples (`isAuthorized`).
+
+| Situação | Resposta do API Gateway |
+|---|---|
+| Sem header `Authorization` | **401** `Unauthorized`. O API Gateway nem chama a Lambda (identity source ausente) |
+| Token inválido (assinatura, `alg`, `iss`, `aud`, `exp`, `sub`, `principal_type`, `cargo`) ou sem `Bearer` | **403** `Forbidden` (`isAuthorized=false`, log `autorizacao_negada` com o `motivo`, nunca o token) |
+| Token válido | Encaminha ao NLB pela integração `protegida` |
+
+- A decisão fica em **cache por 300 s**, com chave no header `Authorization`. Um token que expira nesse intervalo ainda passa pela borda, mas o serviço valida o `exp` de novo.
+- Rotas públicas e fallback protegido em [rotas.md](rotas.md#como-o-api-gateway-encaminha).
 
 ## Contexto do Authorizer
 
-O Lambda Authorizer repassa ao backend os headers `x-user-sub`, `x-user-principal-type` e `x-user-cargo`, mais `x-correlation-id = $context.requestId`. Os serviços **não** autenticam por esses headers, só pelo token. O `x-correlation-id` vira o `correlationId` dos logs e das mensagens.
+O Lambda Authorizer devolve o contexto `{sub, principalType, cargo}` (`cargo = ""` para `CLIENTE`, porque o contexto não aceita `null`). A integração `protegida` o repassa ao backend nos headers `x-user-sub`, `x-user-principal-type` e `x-user-cargo`, mais `x-correlation-id = $context.requestId`. Nas rotas públicas, os `x-user-*` enviados pelo cliente são removidos.
+
+Os serviços **não** autenticam por esses headers, só pelo token. O `x-correlation-id` vira o `correlationId` dos logs e das mensagens.
