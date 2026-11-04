@@ -51,7 +51,7 @@ O EKS só existe durante as janelas de integração. Merge no `-k8s` não liga n
 
 Os dois workflows usam o grupo de concorrência `ambiente`, então um nunca roda junto com o outro.
 
-O `servico-cd.yml` termina verde sem deploy quando o SSM `/mecanica/k8s/cluster-name` não existe (EKS desligado) e falha pedindo `scripts/atualizar-credenciais.sh` quando as credenciais do Academy expiraram.
+O `servico-cd.yml` só faz deploy a partir de `workflow_dispatch` ou do CI de **push** no próprio repositório (um PR de fork com uma branch chamada `main` não dispara o deploy). Ele termina verde sem deploy quando o SSM `/mecanica/k8s/cluster-name` não existe (EKS desligado) e falha pedindo `scripts/atualizar-credenciais.sh` quando as credenciais do Academy expiraram.
 
 ## Rotina de cada sessão do AWS Academy
 

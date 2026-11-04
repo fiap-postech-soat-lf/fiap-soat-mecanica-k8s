@@ -12,7 +12,13 @@ permissions:
 
 jobs:
   cd:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # So o CI de push neste repositorio (merge na main): o filtro "branches: [main]" olha so o
+    # nome da branch, e um PR de fork com uma branch "main" tambem dispararia o CD.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.event == 'push' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     uses: fiap-postech-soat-lf/fiap-soat-mecanica-k8s/.github/workflows/servico-cd.yml@v1
     with:
       servico: servicobase
