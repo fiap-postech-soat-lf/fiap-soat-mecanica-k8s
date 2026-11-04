@@ -2,7 +2,7 @@
 
 Infraestrutura compartilhada da **Fase 4** da Oficina Mecânica do Braia (Tech Challenge FIAP SOAT): cluster EKS e add-ons, workflows reutilizáveis de CI/CD, template dos microsserviços, ambiente local e documentação de arquitetura.
 
-> 🚧 Em construção (fase F1). As seções marcadas com *TODO* são preenchidas nas próximas fases.
+> 🚧 Em construção (fase F2). As seções marcadas com *TODO* são preenchidas nas próximas fases.
 
 ## Repositórios da Fase 4
 
@@ -26,6 +26,7 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | `.github/workflows/` | Reusable workflows `servico-ci.yml`, `servico-cd.yml` e `terraform-ci.yml` (tag `v1`) e o `ci.yml` deste repo |
 | `templates/servico-base/` | Esqueleto comum dos 4 serviços (placeholder `servicobase`; partes só de SQL entre marcadores `[SQL]`/`[/SQL]`), validado pelo workflow `template.yml` |
 | `local/` | `docker compose` com LocalStack (mensageria da tabela 3.4) e os Postgres dos serviços SQL, `verificar.sh` e JWT de dev (ver `local/README.md`) |
+| `k8s/` | Manifestos compartilhados aplicados pelo `cluster.yml`: namespace `mecanica`, RBAC e OpenTelemetryCollector (DaemonSet → Datadog), Instrumentation `java-instrumentation` e o echo de diagnóstico `/health-echo` (`traefik/whoami`) |
 | `terraform/` | EKS 1.37 + node group (3 × t3.medium, launch template IMDSv2 hop 2), add-on metrics-server, Traefik (NodePort 30090), OpenTelemetry Operator, NLB público na frente do Traefik e os parâmetros SSM `/mecanica/k8s/*`. Só roda pelo workflow `cluster.yml` (F2) |
 | `docs/` | `contratos/` (convenções, envelope, JWT e rotas; ver `docs/contratos/convencoes.md`) e `arquitetura-fase4/adr/` (ADRs transversais F4-01 a 05, 11 e 14) |
 
@@ -38,6 +39,17 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | `servico-cd.yml` | 4 serviços (`cd.yml`, após o CI verde na `main`) | — |
 
 Os chamadores usam o job `ci` (ou `cd`), `secrets: inherit` e a tag móvel `@v1`. Para publicar uma mudança compatível, valide-a no `-auth` e depois mova a tag: `git tag -f v1 && git push -f origin v1` (mais o `v1.x.y` imutável). Mudança incompatível vira `v2`.
+
+## Ambiente na AWS
+
+O EKS só existe durante as janelas de integração. Merge no `-k8s` não liga nada: o `terraform/` só roda pelo workflow `Cluster` (`cluster.yml`, `workflow_dispatch`).
+
+| Comando | Efeito |
+|---|---|
+| `scripts/subir-ambiente.sh` | Sobe tudo na ordem da B4 (cluster → serviços → `-auth` → smoke). ~40–50 min |
+| `scripts/destruir-ambiente.sh` | Dispara o workflow `Destruir ambiente` (borda → serviços → cluster → órfãos) e confere os órfãos. ~20–25 min |
+
+Os dois workflows usam o grupo de concorrência `ambiente`, então um nunca roda junto com o outro.
 
 O `servico-cd.yml` termina verde sem deploy quando o SSM `/mecanica/k8s/cluster-name` não existe (EKS desligado) e falha pedindo `scripts/atualizar-credenciais.sh` quando as credenciais do Academy expiraram.
 
