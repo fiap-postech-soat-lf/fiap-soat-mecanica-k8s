@@ -18,7 +18,7 @@ resource "aws_vpc_security_group_ingress_rule" "nlb_http" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
-  description       = "Internet -> NLB:80"
+  description       = "Internet para o NLB na porta 80"
 }
 
 resource "aws_vpc_security_group_egress_rule" "nlb_para_traefik" {
@@ -27,7 +27,7 @@ resource "aws_vpc_security_group_egress_rule" "nlb_para_traefik" {
   ip_protocol                  = "tcp"
   from_port                    = var.traefik_node_port
   to_port                      = var.traefik_node_port
-  description                  = "NLB -> nodes no NodePort do Traefik"
+  description                  = "NLB para os nodes no NodePort do Traefik"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "traefik_do_nlb" {
