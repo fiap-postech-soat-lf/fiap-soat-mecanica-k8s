@@ -84,8 +84,8 @@ spec:
       kubelet_stats:
         collection_interval: 10s
         auth_type: serviceAccount
-        endpoint: https://$${env:K8S_NODE_NAME}:10250
-        node: $${env:K8S_NODE_NAME}
+        endpoint: https://${env:K8S_NODE_NAME}:10250
+        node: ${env:K8S_NODE_NAME}
         insecure_skip_verify: true # Necessario para o certificado do kubelet no Kind local.
         metric_groups: [node, pod, container]
         extra_metadata_labels:
@@ -118,7 +118,7 @@ spec:
             value: "${cluster_name}"
             action: insert
           - key: host.name
-            value: $${env:K8S_NODE_NAME}
+            value: ${env:K8S_NODE_NAME}
             action: upsert
       memory_limiter:
         check_interval: 1s
@@ -168,7 +168,7 @@ spec:
     exporters:
       datadog/exporter:
         api:
-          key: $${env:DD_API_KEY}
+          key: ${env:DD_API_KEY}
           site: datadoghq.com
 
     service:
