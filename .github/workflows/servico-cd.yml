@@ -2,6 +2,9 @@
 # Chamador: job "cd" disparado pelo workflow_run do CI (ou workflow_dispatch), com
 # "with: servico: <svc>" e "secrets: inherit".
 # Ordem: terraform apply (cria o ECR) -> push da imagem -> ConfigMap/Secret -> kubectl apply.
+# Origem (v1.0.1): o github.event aqui e o do chamador. Com workflow_run, so o CI de push no
+# proprio repositorio faz deploy: o filtro "branches: [main]" do chamador olha so o nome da
+# branch, e um PR de fork com uma branch "main" rodaria este CD com os secrets da org.
 name: servico-cd
 
 on:
@@ -38,6 +41,12 @@ on:
 jobs:
   # Porteiro: sem o SSM do cluster (EKS desligado), o CD termina verde sem deploy.
   ambiente:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'workflow_run' &&
+           github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.event == 'push' &&
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -83,7 +92,11 @@ jobs:
 
   deploy:
     needs: ambiente
-    if: ${{ needs.ambiente.outputs.ativo == 'true' }}
+    # Repete a origem do CI no job que faz o checkout (defesa em profundidade).
+    if: >-
+      ${{ needs.ambiente.outputs.ativo == 'true' &&
+          (github.event_name == 'workflow_dispatch' ||
+           github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
