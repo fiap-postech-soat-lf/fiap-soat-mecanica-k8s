@@ -106,7 +106,7 @@ No container (EKS) todos usam a porta **8080**.
 | RDS | `mecanica-<svc>-db` (identity, os, billing) | cada serviço via módulo `-db@v1` |
 | Secrets Manager | `mecanica-<svc>-db`, `mecanica-identity-jwt`, `mercadopago-access-token`, `mercadopago-webhook-secret` | cada serviço |
 | DynamoDB | `execucao-ordens`, `execucao-pecas`, `execucao-reservas`, `execucao-outbox`, `execucao-idempotencia` | execucao (modelagem na RFC-F4-02, F5) |
-| SSM | `/mecanica/<repo-curto>/<chave>` (ex.: `/mecanica/k8s/cluster-name`, `/mecanica/k8s/nlb-dns`, `/mecanica/os/os-eventos-topic-arn`, `/mecanica/auth/api-url`) | quem cria o recurso |
+| SSM | `/mecanica/<repo-curto>/<chave>` (ex.: `/mecanica/k8s/cluster-name`, `/mecanica/k8s/nlb-dns`, `/mecanica/os/os-eventos-topic-arn`, `/mecanica/auth/api-url`); lista dos parâmetros na seção 2.7 | quem cria o recurso |
 
 Todas as filas são padrão (não FIFO), com `visibility_timeout_seconds = 30`, `message_retention_seconds = 345600` (4 dias) e redrive para a DLQ com `maxReceiveCount = 5`.
 
@@ -125,9 +125,42 @@ Todas as filas são padrão (não FIFO), com `visibility_timeout_seconds = 30`, 
 - O bucket **não** é guardado em variável: os workflows calculam `mecanica-tfstate-$(aws sts get-caller-identity --query Account --output text)`. Isso evita reconfigurar quando o Academy mudar de conta.
 - `backend.tf` só com `backend "s3" {}`; o resto vai por `-backend-config` no workflow.
 - Provider AWS `~> 6.0`; `required_version = ">= 1.10.0, < 2.0.0"`.
-- **Contrato infra → CD** (todo serviço segue a partir da F3): `infra/outputs.tf` expõe `ecr_repository_url` (string), `app_config` (map(string), vira o ConfigMap) e `app_secrets` (map(string), `sensitive = true`, vira o Secret).
+- **Contrato infra → CD** (o Identity a partir da F2, os demais quando ganharem `infra/`): `infra/outputs.tf` expõe `ecr_repository_url` (string), `app_config` (map(string), vira o ConfigMap) e `app_secrets` (map(string), `sensitive = true`, vira o Secret). Valores multilinha (PEM) vão com `\n` escapado, porque o `--from-env-file` não aceita quebra de linha.
 
-### 2.7 Git e PR
+### 2.7 Parâmetros SSM (ADR-F4-14)
+Todos `String` (ou `StringList`), lidos com `insecure_value` nos data sources para não virarem valores sensíveis no plano. Só a chave pública é publicada; nenhum segredo vai para o SSM.
+
+| Parâmetro | Tipo | Dono | Consumidor |
+|---|---|---|---|
+| `/mecanica/k8s/cluster-name` | String | `-k8s` | porteiro do `servico-cd` e do `cd.yml` do `-auth`; scripts. **Sinal de "ambiente ligado"**: criado por último no apply (`depends_on` nos helm releases e no NLB) |
+| `/mecanica/k8s/nlb-dns` | String | `-k8s` | `infra/` do `-auth` (destino das integrações) |
+| `/mecanica/k8s/vpc-id` | String | `-k8s` | `infra/` dos serviços (módulo `-db`) |
+| `/mecanica/k8s/subnet-ids` | StringList | `-k8s` | idem |
+| `/mecanica/k8s/node-security-group-id` | String | `-k8s` | idem (`allowed_security_group_ids`): é o SG do cluster que o EKS aplica aos nodes |
+| `/mecanica/identity/jwt-secret-arn` | String | identity | `scripts/smoke-borda.sh` (assina o token de teste) |
+| `/mecanica/identity/jwt-public-key` | String | identity | `infra/` do `-auth` (env `JWT_PUBLIC_KEY` da Lambda) |
+| `/mecanica/auth/api-url` | String | `-auth` | smoke do `servico-cd`; scripts |
+
+### 2.8 Recursos do cluster e da borda
+| Recurso | Nome | Repo |
+|---|---|---|
+| Launch template dos nodes | `mecanica-nodes-*` (`name_prefix`) | `-k8s` |
+| NLB / target group / SG do NLB | `mecanica-nlb` / `mecanica-traefik` / `mecanica-nlb` | `-k8s` |
+| Echo de diagnóstico | Deployment, Service e IngressRoute `mecanica-echo` (`traefik/whoami`), rota `/health-echo` | `-k8s` (`k8s/echo.yaml`) |
+| Lambda | `mecanica-authorizer` (log group `/aws/lambda/mecanica-authorizer`, retenção de 7 dias) | `-auth` |
+| HTTP API | `mecanica-api`, stage `$default` (access log `/aws/apigateway/mecanica-api`, retenção de 7 dias) | `-auth` |
+| Authorizer | `mecanica-jwt` | `-auth` |
+| RDS / secret / SG do RDS | `mecanica-<svc>-db` / `mecanica-<svc>-db` / `mecanica-<svc>-db` | serviço, via módulo |
+
+### 2.9 Destrutibilidade (todo `infra/`)
+Cada janela de integração destrói e recria tudo. Por isso:
+- Secrets Manager com `recovery_window_in_days = 0`. Sem isso, o nome fica reservado por 7 dias e o apply da janela seguinte falha.
+- ECR com `force_delete = true`, porque um repositório com imagens não é apagado.
+- ECR com `image_tag_mutability = "MUTABLE"`. O `workflow_dispatch` do CD reconstrói o mesmo SHA, e com tags imutáveis o push falharia.
+- RDS com `skip_final_snapshot = true`, `deletion_protection = false` e `backup_retention_period = 0` (cria mais rápido, sem backup automático).
+- Log groups criados pelo Terraform, com retenção curta. Nada de log group criado implicitamente pela AWS.
+
+### 2.10 Git e PR
 - Branches curtas: `feat/<assunto>`, `fix/<assunto>`, `chore/<assunto>`, `docs/<assunto>`.
 - Commits no padrão Conventional Commits, em português (`feat: adiciona outbox SQL ao esqueleto`).
 - PR → `gh pr merge --auto --squash --delete-branch`. Só squash merge.
