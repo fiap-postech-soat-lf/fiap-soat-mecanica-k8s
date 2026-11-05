@@ -21,16 +21,16 @@ O ambiente da Fase 4 não fica ligado: cada janela de integração sobe tudo do 
 
 ## Tempo de subida e destruição
 
-| Etapa | Estimado no plano | Medido |
-|---|---|---|
-| `cluster.yml` (EKS, nodes, helm, NLB, manifestos, smoke) | 25–30 min | **≈ 14 min**: 10 min até o EKS (9m38s) e o NLB (2m53s, em paralelo), mais 4m05s de node group, helm e manifestos. Medido em duas execuções, por causa da correção do PR #12 |
-| `cd.yml` do Identity (RDS, ECR, build, push, rollout) | 11–15 min | **10m27s**: Terraform 5m43s (RDS 5m18s), build e push 2m08s, rollout 1m48s |
-| `cd.yml` do `-auth` (build, Lambda, API Gateway, smoke) | 3 min | **54s** (39 recursos) |
-| `smoke-borda.sh` | 1 min | **< 1 min** (8/8 PASS) |
-| **Total do `subir-ambiente.sh`** | 40–50 min | **≈ 26 min** (soma das etapas; a 1ª subida limpa de ponta a ponta fica para o 2º ciclo ou o CP1) |
-| `destruir-ambiente.sh` (workflow + `verificar-orfaos.sh`) | 20–25 min | **15m30s**: borda 32s, serviços 2m23s, cluster 10m37s, órfãos 36s. Nenhum órfão |
+| Etapa | Estimado no plano | 1º ciclo (com correções no meio) | **2º ciclo (limpo, um comando)** |
+|---|---|---|---|
+| `cluster.yml` (EKS, nodes, helm, NLB, manifestos, smoke) | 25–30 min | ≈ 14 min, em duas execuções (PR #12) | **12m46s**: EKS 8m44s, NLB 2m52s em paralelo, node group 1m47s, helm ~20s cada, manifestos e smoke ~20s |
+| `cd.yml` do Identity (RDS, ECR, build, push, rollout) | 11–15 min | 10m27s (só RDS e secret do banco no Terraform; RDS 5m18s) | **10m14s** (RDS 5m47s) |
+| `cd.yml` do `-auth` (build, Lambda, API Gateway, smoke) | 3 min | 54s (39 recursos) | **1m16s** |
+| `smoke-borda.sh` | 1 min | < 1 min (8/8 PASS) | **16s** (8/8 PASS) |
+| **Total do `subir-ambiente.sh`** | 40–50 min | — | **24m47s** |
+| `destruir-ambiente.sh` (workflow + `verificar-orfaos.sh`) | 20–25 min | 15m30s (borda 32s, serviços 2m23s, cluster 10m37s, órfãos 36s) | **15m01s** (workflow 14m22s). Nenhum órfão nos dois ciclos |
 
-Medido por recurso na 1ª tentativa: control plane do EKS **9m38s**, e o NLB **2m53s** em paralelo. A subida é dominada pelo control plane do EKS e pelo RDS, que o Terraform cria em série porque o RDS depende do SG do cluster publicado no SSM. A partir da F4 entram mais 2 RDS e o DynamoDB. Os RDS de OS e Billing são criados em CDs separados, em sequência, por isso cada serviço com RDS acrescenta ≈ 10,5 min (o CD do Identity medido), e o Execução, sem RDS, ≈ 5 min. **Projeção da F6 em diante:** ≈ 26 + 10,5 (OS) + 10,5 (Billing) + 5 (Execução) ≈ **52 min**. A Identity Spring Boot leva 76 s para iniciar com 250m de CPU de request, o que domina o rollout.
+Um ciclo completo (subir, validar e destruir) cabe em **~45 min**, com folga dentro das 4 h de credencial do Academy. A subida é dominada pelo control plane do EKS e pelo RDS, que o Terraform cria em série porque o RDS depende do SG do cluster publicado no SSM. A partir da F4 entram mais 2 RDS e o DynamoDB. Os RDS de OS e Billing são criados em CDs separados, em sequência, por isso cada serviço com RDS acrescenta ≈ 10,5 min (o CD do Identity medido), e o Execução, sem RDS, ≈ 5 min. **Projeção da F6 em diante:** ≈ 25 + 10,5 (OS) + 10,5 (Billing) + 5 (Execução) ≈ **51 min**. A Identity Spring Boot leva 76 s para iniciar com 250m de CPU de request, o que domina o rollout.
 
 ## Capacidade do cluster
 
@@ -76,8 +76,8 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 |---|---|
 | Saldo antes da janela (2026-11-04, 22:12 UTC) | US$ 50,00 |
 | Saldo depois da janela (2026-11-04, 23:45 UTC) | US$ 50,00 no painel, que ainda não refletia a janela. **Reconferir no início do D8** |
-| Duração da janela com recurso ligado | ≈ 1 h 25 min (de ~22:15 a ~23:40 UTC). Inclui ~20 min com o EKS e o NLB ligados sem nodes, por causa das falhas corrigidas nos PRs #12 do `-k8s` e #5 do Identity |
-| Custo medido por hora | Pendente (D8). Pela estimativa, a janela custou ≈ 1,4 h × US$ 0,35 ≈ **US$ 0,50** |
+| Duração da janela com recurso ligado | ≈ 2 h 05 min: 1º ciclo de ~22:15 a ~23:40 UTC (inclui ~20 min com o EKS e o NLB ligados sem nodes, por causa das falhas corrigidas nos PRs #12 do `-k8s` e #5 do Identity) e 2º ciclo de ~23:59 a ~00:39 UTC |
+| Custo medido por hora | Pendente (D8). Pela estimativa, a janela custou ≈ 2,1 h × US$ 0,35 ≈ **US$ 0,70** |
 
 > O painel do Learner Lab atualiza o saldo com atraso de algumas horas. Se o valor "depois" ainda não refletir a janela, conferir de novo no início do D8 e atualizar esta tabela.
 
