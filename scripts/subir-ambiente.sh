@@ -8,17 +8,19 @@
 #
 # Uso: scripts/subir-ambiente.sh [--dry-run]
 #   --dry-run: mostra a ordem e o que seria disparado, sem disparar nada
-# Variaveis: ORG (padrao fiap-postech-soat-lf)
+# Variaveis: ORG (padrao fiap-postech-soat-lf), AWS_REGION (padrao us-east-1)
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ORG="${ORG:-fiap-postech-soat-lf}"
+# O perfil local pode nao ter regiao: sem isto, o resumo final sai sem a URL da API (NoRegion).
+export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 DRY_RUN=false
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
   esac
 done
