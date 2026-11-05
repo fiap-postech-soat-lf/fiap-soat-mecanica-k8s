@@ -1,7 +1,7 @@
 # ADR-F4-03: SNS + SQS com AWS SDK v2 direto
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (decidido no planejamento; o uso do SDK direto é a decisão F1-c)
+- **Data:** 2026-11-02 (decidido no planejamento; o uso do SDK direto é a decisão F1-c). Revisada em 2026-11-05 (F4-a: dono da assinatura do `os-eventos` e nova ordem B4)
 - **Escopo:** transversal (os 4 serviços)
 - **Implementação:** `templates/servico-base/` (`SqsConsumidor`, `SnsSqsPublicador`, `DestinosMensageria`, `DlqDepthMetrics`), `local/localstack/init/ready.d/01-mensageria.sh`; contratos em `docs/contratos/`
 
@@ -17,6 +17,7 @@ Também era preciso escolher o cliente Java. O plano original previa validar o S
 
 - **Comandos** vão para a **fila do consumidor**: `mecanica-execucao-comandos` e `mecanica-billing-comandos`.
 - **Eventos** vão para o **tópico do produtor**: `mecanica-execucao-eventos`, `mecanica-billing-eventos` e `mecanica-os-eventos`. Cada tópico é assinado pela fila de quem consome: `mecanica-os-saga-respostas` e `mecanica-identity-notificacoes`.
+- **Dono das assinaturas:** em regra, **o consumidor** cria a assinatura do tópico que ele consome (`execucao-eventos` e `billing-eventos` → `os-saga-respostas`, no `infra/` do OS). **Exceção (F4-a):** a assinatura `os-eventos` → `identity-notificacoes` é criada pelo **`infra/` do OS**, que lê o ARN da fila em `/mecanica/identity/notificacoes-queue-arn`. O Identity cria a queue policy da fila sempre, com o ARN do tópico montado a partir do nome (`arn:aws:sns:<região>:<conta>:mecanica-os-eventos`).
 - **Assinaturas** com `RawMessageDelivery=true`: o corpo na fila é o próprio envelope, sem o embrulho do SNS, e os atributos de mensagem (`type`) chegam na fila.
 - **Filas:** padrão (não FIFO), com `VisibilityTimeout=30`, retenção de 4 dias e DLQ com `maxReceiveCount=5`.
 - **Envelope comum** (`envelope.schema.json`): carrega `messageId`, `correlationId`, `causationId` e o `traceparent` W3C opcional. Assim o trace pode ser restaurado mesmo se a propagação automática se perder no SNS → SQS.
@@ -27,6 +28,16 @@ Também era preciso escolher o cliente Java. O plano original previa validar o S
 - **`SnsSqsPublicador`:** resolve o nome lógico em `app.messaging.destinos.<nome>`. Se o destino é ARN de tópico, publica no SNS; se é URL de fila, envia direto ao SQS. Nos dois casos envia o atributo `type`.
 - **`DlqDepthMetrics`:** a cada 60 s publica o gauge `dlq.depth{fila}`, base do alerta no Datadog.
 
+## Ordem de provisionamento (B4) e a exceção da assinatura
+
+O OS, o Billing e o Execução precisam da chave pública do JWT, que só existe depois do `apply` do Identity (ADR-F4-07). A ordem antiga (`os` antes de `identity`) fazia o OS subir, numa subida do zero, sem chave, e recusar todos os tokens. A F3-h resolvia o ciclo de outro lado (assinatura condicional no Identity, dependente do SSM do OS), o que mantinha a ordem errada. A nova ordem é:
+
+```
+cluster.yml (-k8s) → identity → execucao → billing → os → -auth → smoke-borda.sh
+```
+
+Destruição, inversa: `-auth` → `os` → `billing` → `execucao` → `identity` → cluster (o OS sai antes dos tópicos e da fila que ele assina). Com o Identity primeiro, o fim do ciclo é a assinatura passar para o OS, que é aplicado depois da fila. Os parâmetros SSM que o OS lê dos três donos são lidos com `data "aws_ssm_parameter"` **direto**: se faltar algum, o `plan` falha com `ParameterNotFound`, e isso é melhor do que subir uma Saga sem destino.
+
 ## Alternativas consideradas
 
 | Alternativa | Motivo da rejeição |
@@ -35,6 +46,7 @@ Também era preciso escolher o cliente Java. O plano original previa validar o S
 | Amazon MSK / Kafka | Caro e lento de subir no Academy; a ordem por partição não é necessária, porque a Saga trata a ordem pelo passo atual |
 | RabbitMQ no cluster | Mais um componente com estado para operar no EKS, que fica desligado entre as janelas de integração |
 | EventBridge | Roteamento por regra é útil, mas não substitui a fila com DLQ e visibility timeout no consumo. Também não é necessário para 3 tópicos fixos |
+| Manter o `os` antes do `identity` e a assinatura condicional no Identity (F3-h) | Numa subida do zero, o OS sobe sem a chave pública. O ciclo só se desfaz com o Identity primeiro, e daí a assinatura precisa passar para quem vem depois |
 | Filas FIFO | A deduplicação de 5 min não substitui a idempotência (ADR-F4-04), e o throughput é menor. A Saga não depende de ordem global |
 
 ## Consequências
@@ -47,4 +59,5 @@ Também era preciso escolher o cliente Java. O plano original previa validar o S
 **Negativas / riscos**
 - **Código próprio de infraestrutura:** poller, shutdown e pausa após erro são código nosso e precisam de teste. Isso foi coberto no esqueleto, com a manutenção concentrada no template.
 - **Destinos por variável explícita:** cada destino precisa de uma variável própria (`MESSAGING_DESTINO_<NOME>`), porque a ligação relaxada do Spring não preserva o `-` das chaves de mapa vindas de variáveis de ambiente.
+- **Uma exceção à regra "o consumidor é dono da assinatura":** quem lê o `infra/` do OS encontra uma assinatura cuja fila é do Identity. O nome do parâmetro `/mecanica/identity/notificacoes-queue-arn` fica fixado em `convencoes.md`.
 - **Long polling no shutdown:** pode atrasar o encerramento do pod em até ~25 s.

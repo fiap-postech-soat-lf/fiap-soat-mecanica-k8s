@@ -82,6 +82,10 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 
 > O painel do Learner Lab atualiza o saldo com atraso de algumas horas. O saldo do D8 será anotado no registro da janela da F3.
 
+**Janela do D8 (CP1):** o painel continuava em **US$ 49,50** em 2026-11-05 (reconferido no B0 da F4), sem refletir a janela. O custo do D8 está **pendente**: será conferido no passo 1 da janela do D10. Se ainda estiver em US$ 49,50, o gasto do D8 e o do D10 aparecerão somados, e serão rateados pelas horas ligadas de cada janela.
+
+**Janela do D10 (CP2), estimativa:** o ambiente passa a ter 3 RDS (Identity, OS e Billing), ≈ US$ 0,40/h pela estimativa acima, ou ≈ US$ 0,25–0,30/h pela taxa medida no D7 (US$ 0,24/h com 1 RDS). Com ≈ 2 h 15 ligado, **≈ US$ 0,55–0,90**. Somado ao D7 (US$ 0,50 medido) e ao D8 (≈ US$ 0,45 estimado), o projeto fica em ≈ US$ 1,50–1,85 até o CP2. O valor medido do D10 entra aqui depois da janela.
+
 ## Decisão
 
 - **Ambiente efêmero por janela:** subir com `subir-ambiente.sh` e destruir com `destruir-ambiente.sh` ao fim de **toda** janela, sem exceção. O ambiente não fica ligado entre dias.
