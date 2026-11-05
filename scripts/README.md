@@ -10,10 +10,11 @@ Scripts de administração da org `fiap-postech-soat-lf` e da conta AWS Academy.
 | `aplicar-ruleset.sh` + `ruleset-main.json` | T10 | Depois do push inicial de cada repositório |
 | `novo-servico.sh` | T12 | Para gerar ou regenerar um serviço a partir do template |
 | `comparar-esqueleto.sh` | T12 | Para conferir se um serviço divergiu do template |
-| `subir-ambiente.sh` | F2 T05 | Início de cada janela com o EKS: credenciais → `cluster.yml` → CDs de `execucao`, `billing`, `os` e `identity` (quem tiver `infra/*.tf`) → CD do `-auth` → `smoke-borda.sh`, com o tempo de cada etapa |
+| `subir-ambiente.sh` | F2 T05 | Início de cada janela com o EKS: credenciais → `cluster.yml` → CDs de `identity`, `execucao`, `billing` e `os` (quem tiver `infra/*.tf`) → CD do `-auth` → `smoke-borda.sh`, com o tempo de cada etapa |
 | `destruir-ambiente.sh` | F2 T05 | Fim de **toda** janela: dispara o `destruir-ambiente.yml`, espera e roda o `verificar-orfaos.sh` |
 | `verificar-orfaos.sh` | F2 T05 | Depois do destroy (saída 0 = conta limpa, 1 = sobrou recurso, 2 = erro de consulta). Só leitura |
-| `smoke-borda.sh` | F2 T05 | Com o ambiente ligado: verificações 5–9 do DoD da F2 (401, 403, 200 com `x-user-*`, rota pública, cadeia até o Identity). Só leitura |
+| `smoke-borda.sh` | F2 T05 | Com o ambiente ligado: verificações 5–18 (F2 + CP1 + CP2): 401, 403, 200 com `x-user-*`, rota pública, logins do Identity e a borda até o OS, o Execução e o Billing. Só leitura |
+| `demo-saga-os.sh` | F4 T09 | Com o ambiente ligado: abre uma OS, confere o comando na fila, simula o `DiagnosticoAberto`, cancela e confere as notificações no Identity. **Escreve dados** (prova do CP2) |
 | `destruir-stack.sh` | F2 T05 | Usado pelo `destruir-ambiente.yml`; à mão, destrói um stack pela key do state (pula state vazio) |
 | `lib-workflows.sh` | F2 T05 | Funções comuns (`disparar_e_esperar`), carregado com `source` |
 

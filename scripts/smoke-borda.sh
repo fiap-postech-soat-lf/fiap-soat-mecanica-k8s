@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Smoke da borda: verificacoes 5-14 (F2 + CP1). API Gateway + Lambda Authorizer + NLB +
-# Traefik + Identity, incluindo os logins reais do Identity (10-14). Imprime PASS/FAIL.
+# Smoke da borda: verificacoes 5-18 (F2 + CP1 + CP2). API Gateway + Lambda Authorizer + NLB +
+# Traefik + Identity, incluindo os logins reais do Identity (10-14) e a borda ate o OS, o Execucao
+# e o Billing (15-18). Imprime PASS/FAIL.
 #
 # Uso: scripts/smoke-borda.sh
 # Le do SSM /mecanica/auth/api-url, /mecanica/k8s/nlb-dns e /mecanica/identity/jwt-secret-arn.
@@ -26,6 +27,10 @@ VEICULO_ID_SEED="44444444-4444-4444-4444-444444444444"
 EMAIL_MECANICO_SEED="mecanico@mecanica.test"
 SENHA_SEED="Senha@123"
 CPF_VALIDO_NAO_CADASTRADO="39053344705"
+# Seed do catalogo do OS (V6__seed.sql em fiap-soat-mecanica-os) e placa do veiculo do seed.
+SERVICO_SEED_1="77777777-7777-7777-7777-777777777777"
+SERVICO_SEED_2="77777777-7777-7777-7777-777777777778"
+PLACA_SEED="ABC1D23"
 
 ssm() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text; }
 
@@ -166,6 +171,43 @@ status=$(post_json s14a "$API/auth/cpf" "{\"cpf\":\"$CPF_VALIDO_NAO_CADASTRADO\"
 conferir_status 14a "POST /auth/cpf valido e nao cadastrado -> 401" 401 "$status"
 status=$(post_json s14b "$API/auth/cpf" '{"cpf":"123"}')
 conferir_status 14b "POST /auth/cpf malformado -> 400" 400 "$status"
+
+# 15-18: a borda ate os servicos da F4 (CP2). So leitura.
+# 15. Rota publica e StripPrefix chegam aos tres servicos novos.
+for svc in os execucao billing; do
+  status=$(requisitar "s15$svc" "$API/$svc/actuator/health")
+  if [[ "$status" == 200 ]] && grep -q '"UP"' "$TMP/s15$svc.corpo"; then
+    pass "15" "GET /$svc/actuator/health sem token -> UP" "HTTP 200"
+  else
+    fail "15" "GET /$svc/actuator/health sem token -> UP" "obtido $status: $(head -c 200 "$TMP/s15$svc.corpo")"
+  fi
+done
+
+# 16. O OS aceita o token do Identity (chave publica certa) e devolve o catalogo do seed.
+status=$(requisitar s16 "$API/servicos" -H "Authorization: Bearer $TOKEN_MECANICO")
+if [[ "$status" == 200 ]] && jq -e --arg a "$SERVICO_SEED_1" --arg b "$SERVICO_SEED_2" \
+  'map(.id) | (index($a) != null) and (index($b) != null)' "$TMP/s16.corpo" > /dev/null 2>&1; then
+  pass 16 "GET /servicos com token de mecanico -> 200 com o catalogo do seed" "HTTP 200"
+else
+  fail 16 "GET /servicos com token de mecanico -> 200 com o catalogo do seed" "obtido $status: $(head -c 200 "$TMP/s16.corpo")"
+fi
+
+# 17. Consulta publica por placa: lista de situacoes, sem dados do cliente nem a placa.
+status=$(requisitar s17 "$API/ordem-servicos/veiculo/placa/$PLACA_SEED")
+if [[ "$status" == 200 ]] && jq -e 'type == "array"' "$TMP/s17.corpo" > /dev/null 2>&1 \
+  && ! grep -qiE 'clienteId|"placa"' "$TMP/s17.corpo"; then
+  pass 17 "GET /ordem-servicos/veiculo/placa/{placa} sem token -> 200 sem clienteId nem placa" "HTTP 200"
+else
+  fail 17 "GET /ordem-servicos/veiculo/placa/{placa} sem token -> 200 sem clienteId nem placa" "obtido $status: $(head -c 200 "$TMP/s17.corpo")"
+fi
+
+# 18. CLIENTE nao lista OS: o 403 vem do OS (ErrorResponse), e nao do API Gateway.
+status=$(requisitar s18 "$API/ordem-servicos" -H "Authorization: Bearer $TOKEN_CLIENTE")
+if [[ "$status" == 403 ]] && jq -e '.status == 403 and has("erro")' "$TMP/s18.corpo" > /dev/null 2>&1; then
+  pass 18 "GET /ordem-servicos com token de cliente -> 403 do OS" "HTTP 403"
+else
+  fail 18 "GET /ordem-servicos com token de cliente -> 403 do OS" "obtido $status: $(head -c 200 "$TMP/s18.corpo")"
+fi
 
 echo
 if [[ "$FALHAS" -eq 0 ]]; then
