@@ -10,11 +10,12 @@ Decisões de arquitetura transversais da Fase 4 (os 7 repositórios). As decisõ
 | [ADR-F4-04](ADR-F4-04-outbox-consumidor-idempotente.md) | Transactional Outbox (`FOR UPDATE SKIP LOCKED`) e consumidor idempotente por `messageId` | Aceito |
 | [ADR-F4-05](ADR-F4-05-database-per-service.md) | Database per service: 3 RDS Postgres e DynamoDB no Execução | Aceito |
 | [ADR-F4-06](ADR-F4-06-borda-api-gateway-authorizer-nlb.md) | Borda: HTTP API + Lambda Authorizer + NLB público → Traefik NodePort; duas integrações; rotas públicas explícitas; 401 sem token e 403 com token inválido | Aceito |
-| [ADR-F4-07](ADR-F4-07-jwt-rs256.md) | JWT RS256 emitido pelo Identity: par gerado no Terraform, chave pública no SSM, chave nova a cada janela | Proposto (chaves aceitas na F2; fecha na F3) |
+| [ADR-F4-07](ADR-F4-07-jwt-rs256.md) | JWT RS256 emitido pelo Identity: par gerado no Terraform, chave pública no SSM, chave nova a cada janela | Aceito |
 | [ADR-F4-08](ADR-F4-08-ecr-por-servico.md) | Um repositório ECR por serviço no `infra/` do serviço, `MUTABLE` e `force_delete` | Aceito |
 | ADR-F4-09, 10 | REST síncrono com Resilience4j; observabilidade | *TODO* (F4, F8) |
 | [ADR-F4-11](ADR-F4-11-pipeline-padrao-e-ruleset.md) | Reusable workflows `@v1` e ruleset da `main` com PR e checks obrigatórios e 0 aprovações | Aceito |
-| ADR-F4-12, 13 | Notificações no Identity; recomeço limpo com seeds de UUIDs estáveis | *TODO* (F3) |
+| [ADR-F4-12](ADR-F4-12-notificacoes-no-identity.md) | Notificações no Identity: consome `os-eventos`, adapter de log, assinatura condicional | Aceito |
+| ADR-F4-13 | Recomeço limpo com seeds de UUIDs estáveis | *TODO* |
 | [ADR-F4-14](ADR-F4-14-ssm-entre-repositorios.md) | Configuração entre repositórios via SSM Parameter Store e bucket de state derivado do account ID | Aceito |
 
 RFCs em [`../rfc/`](../rfc/):
