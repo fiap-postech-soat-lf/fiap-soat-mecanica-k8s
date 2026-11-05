@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sobe o ambiente da Fase 4 do zero, na ordem da secao 9.2 do plano da F2 (B4):
 #   0) atualizar-credenciais.sh   1) workflow Cluster do -k8s
-#   2) CD de execucao, billing, os e identity (so quem tem infra/*.tf na main)
+#   2) CD de identity, execucao, billing e os (so quem tem infra/*.tf na main)
 #   3) CD do -auth (API Gateway + authorizer)   4) smoke-borda.sh
 # Cada workflow e disparado com o gh ja autenticado e acompanhado ate o fim (sem PAT).
 # No fim imprime a URL da API e o tempo de cada etapa (dado da RFC-F4-03).
@@ -28,8 +28,10 @@ done
 # shellcheck source=scripts/lib-workflows.sh
 source "$DIR/lib-workflows.sh"
 
-# Ordem B4: os servicos consumidos primeiro, o identity por ultimo (dono das chaves do JWT).
-SERVICOS=(execucao billing os identity)
+# Ordem B4 (F4-a): o identity primeiro (dono das chaves do JWT e da fila de notificacoes), depois
+# execucao e billing (donos dos topicos e das filas de comando) e o os por ultimo, que le o SSM dos
+# tres e cria as assinaturas. Ordem antiga: o os subia sem a chave publica e recusava todos os tokens.
+SERVICOS=(identity execucao billing os)
 TEMPOS=()
 
 # cronometrar <etapa> <comando...>: roda o comando e guarda a duracao no resumo.

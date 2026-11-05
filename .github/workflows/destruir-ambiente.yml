@@ -102,7 +102,7 @@ jobs:
       # Laco, e nao matrix: a matrix nao garante a ordem (inversa da B4).
       - name: Destruir os servicos
         run: |
-          for svc in identity os execucao billing; do
+          for svc in os billing execucao identity; do
             repo="fiap-soat-mecanica-$svc"
             dir="$RUNNER_TEMP/$repo"
             git clone --quiet --depth 1 "https://github.com/${ORG}/${repo}.git" "$dir"
