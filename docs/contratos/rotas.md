@@ -7,13 +7,43 @@ Base das IngressRoutes do Traefik (`k8s/ingressroute.yaml` de cada serviço, ger
 | `POST /auth/login`, `POST /auth/cpf` | identity | 🔓 público |
 | `/auth/**` (demais), `/clientes/**`, `/veiculos/**`, `/usuarios/**` | identity | JWT |
 | `GET /ordem-servicos/veiculo/placa/{placa}` | os | 🔓 público (só situação e datas, sem dados pessoais) |
-| `/ordem-servicos/**`, `/servicos/**` | os | JWT |
+| `/ordem-servicos/**`, `/servicos/**` | os | JWT (perfis na seção abaixo) |
 | `POST /webhooks/mercadopago` | billing | 🔓 público (validado por HMAC `x-signature`) |
 | `/orcamentos/**`, `/pagamentos/**` | billing | JWT |
 | `/execucoes/**`, `/prestacoes/**`, `/pecas/**`, `/alocacoes/**` | execucao | JWT |
 | `GET /{identity\|os\|billing\|execucao}/actuator/health/**` | o próprio | 🔓 público |
 | `GET /{svc}/swagger-ui/**`, `/{svc}/swagger-ui.html`, `/{svc}/v3/api-docs/**` | o próprio | 🔓 público |
 | `/health-echo` | `mecanica-echo` (`traefik/whoami`, só no `-k8s`) | JWT (diagnóstico da borda: devolve os headers recebidos) |
+
+## Rotas e perfis do OS
+
+O perfil é verificado pelo próprio OS (`ROLE_<tipo>` e `ROLE_<cargo>` do JWT); o API Gateway só valida o token.
+
+| Rota | Perfil |
+|---|---|
+| `POST /ordem-servicos` (`{veiculoId, observacao}` → 201 `RECEBIDA`, com `Location`) | ATENDENTE ou MECANICO |
+| `GET /ordem-servicos?page&size`, `GET /ordem-servicos/{id}`, `GET /ordem-servicos/{id}/historico` | ATENDENTE ou MECANICO |
+| `PATCH /ordem-servicos/{id}/cancelar` (`{motivo?}`) | ATENDENTE ou MECANICO |
+| `PATCH /ordem-servicos/{id}/revisar-orcamento` (`{motivo?}`) | ATENDENTE ou MECANICO |
+| `GET /ordem-servicos/minhas` | CLIENTE (`cliente_id = sub`) |
+| 🔓 `GET /ordem-servicos/veiculo/placa/{placa}` | público; devolve só `situacao` e as datas, sem `id`, `clienteId`, valores nem observação |
+| `POST /servicos`, `PUT /servicos/{id}`, `PATCH /servicos/{id}/ativar`, `PATCH /servicos/{id}/inativar` | MECANICO |
+| `GET /servicos/{id}`, `GET /servicos` (`?incluirInativos=true`) | MECANICO (o Execução repassa o JWT do mecânico na F5) |
+| 🔓 `/actuator/health/**`, Swagger, `/error` | público |
+
+`GET /ordem-servicos/{id}` devolve também `clienteId`, `placa`, `sagaId`, `sagaStatus`, `passoAtual`, `orcamentoId` e `valorTotal`.
+
+Erros próprios do OS (`ErrorResponse`):
+
+| Situação | Status | Código |
+|---|---|---|
+| Veículo inexistente ou inativo | 422 | `VEICULO_INVALIDO` |
+| Identity fora do ar (retries esgotados) | 503 | `IDENTITY_INDISPONIVEL` |
+| Identity recusou o token repassado | 502 | `INTEGRACAO_IDENTITY` |
+| Transição inválida (por exemplo, cancelar uma OS `EM_EXECUCAO`, ou depois de `OrcamentoAprovado`) | 422 | regra de negócio |
+| Conflito de versão | 409 | `CONFLITO_CONCORRENTE` (o cliente repete a operação) |
+
+Saíram do controller do monolito e passaram a ser feitos por evento da Saga, ou foram para outro serviço: `POST /abrir`, `iniciar-execucao`, `enviar-para-aguardar-aprovacao`, `pagar` (Saga), `aprovar-orcamento` e `recusar-orcamento` (Billing) e `tempo-medio` (Execução).
 
 ## Chamadas entre serviços
 

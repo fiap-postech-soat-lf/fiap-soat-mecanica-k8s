@@ -1,7 +1,7 @@
 # ADR-F4-04: Transactional Outbox e consumidor idempotente
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (implementado no esqueleto na F1)
+- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i)
 - **Escopo:** transversal (Identity, OS e Billing na versão SQL; Execução na versão DynamoDB, F5)
 - **Implementação:** `templates/servico-base/.../adapters/out/persistence/mensageria/` (`OutboxSqlAdapter`, `OutboxPublisher`, `ProcessadorMensagemSql`) e `V1__mensageria.sql`
 
@@ -34,6 +34,10 @@ As escritas de negócio e de outbox feitas pelo handler entram na **mesma transa
 
 O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em processamento e herda o `correlationId`. Assim a cadeia comando → evento → comando fica rastreável.
 
+**Reenvio por timeout da Saga (F4-h):** o reenvio de um comando cria um **envelope novo** (`messageId` novo, mesmo payload, `causationId` = o comando original). Reenviar com o mesmo `messageId` não serve: se a resposta se perdeu, o participante já registrou aquele `messageId` em `mensagem_processada` e descartaria o reenvio como duplicata. Por isso, além do `messageId`, **cada participante é idempotente pela chave de negócio** (`osId` + tipo de comando) e **reemite a resposta** quando recebe de novo um comando que já atendeu. Isso é requisito do Execução (F5) e do Billing (F6).
+
+**`SKIP LOCKED` também nos timeouts (F4-i):** o `SagaTimeoutScheduler` lê as instâncias vencidas (`prazo_em`) com `SELECT ... FOR UPDATE SKIP LOCKED` (até 20 por rodada, em `TransactionTemplate`, como o `OutboxPublisher`) e trata cada uma na mesma transação. Com 2 réplicas do OS, cada uma pega instâncias diferentes e nenhuma instância é tratada duas vezes. O `@Version` da `saga_instancia` cobre o caso restante, o de um handler e o scheduler na mesma Saga.
+
 **Execução (DynamoDB, F5):** mesma semântica com as tabelas `execucao-outbox` e `execucao-idempotencia`. A idempotência usa `PutItem` condicional com TTL, e a reserva de estoque usa `TransactWriteItems` (RFC-F4-02).
 
 ## Alternativas consideradas
@@ -43,6 +47,7 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 | Publicar direto após o commit (`@TransactionalEventListener` / *after commit*) | A mensagem se perde se o pod cair entre o commit e a publicação, e não há retry durável |
 | CDC com Debezium lendo o WAL | Kafka Connect e mais infraestrutura no Academy para resolver o que uma tabela e um `@Scheduled` resolvem |
 | SQS FIFO com deduplicação | A janela de 5 min não cobre reentregas mais tardias, e não resolve o *dual write* |
+| Reenviar o comando com o mesmo `messageId` | O participante já o deduplicou, e uma resposta perdida nunca seria refeita |
 | Idempotência "natural" de cada handler | Depende de cada caso de uso acertar; o registro por `messageId` dá a garantia uma vez, no esqueleto |
 
 ## Consequências

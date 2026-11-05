@@ -101,7 +101,7 @@ No container (EKS) todos usam a porta **8080**.
 | SQS (+ `-dlq`) | `mecanica-identity-notificacoes` | identity |
 | Assinatura (raw) | `execucao-eventos` → `os-saga-respostas` | os |
 | Assinatura (raw) | `billing-eventos` → `os-saga-respostas` | os |
-| Assinatura (raw) | `os-eventos` → `identity-notificacoes` | identity |
+| Assinatura (raw) | `os-eventos` → `identity-notificacoes` | **os** (exceção à regra "o consumidor é dono", F4-a; ADR-F4-03). O Identity só cria a fila e a queue policy |
 | ECR | `mecanica-<svc>` | cada serviço |
 | RDS | `mecanica-<svc>-db` (identity, os, billing) | cada serviço via módulo `-db@v1` |
 | Secrets Manager | `mecanica-<svc>-db`, `mecanica-identity-jwt`, `mercadopago-access-token`, `mercadopago-webhook-secret` | cada serviço |
@@ -130,6 +130,8 @@ Todas as filas são padrão (não FIFO), com `visibility_timeout_seconds = 30`, 
 ### 2.7 Parâmetros SSM (ADR-F4-14)
 Todos `String` (ou `StringList`), lidos com `insecure_value` nos data sources para não virarem valores sensíveis no plano. Só a chave pública é publicada; nenhum segredo vai para o SSM.
 
+Os parâmetros de outro serviço (Identity, Execução e Billing, lidos pelo OS) são lidos com `data "aws_ssm_parameter"` **direto**, não condicional. Na ordem B4 o dono sempre aplica antes, e a falta de um parâmetro é um erro (`ParameterNotFound` no `plan`), melhor do que subir uma Saga sem destino.
+
 | Parâmetro | Tipo | Dono | Consumidor |
 |---|---|---|---|
 | `/mecanica/k8s/cluster-name` | String | `-k8s` | porteiro do `servico-cd` e do `cd.yml` do `-auth`; scripts. **Sinal de "ambiente ligado"**: criado por último no apply (`depends_on` nos helm releases e no NLB) |
@@ -137,10 +139,27 @@ Todos `String` (ou `StringList`), lidos com `insecure_value` nos data sources pa
 | `/mecanica/k8s/vpc-id` | String | `-k8s` | `infra/` dos serviços (módulo `-db`) |
 | `/mecanica/k8s/subnet-ids` | StringList | `-k8s` | idem |
 | `/mecanica/k8s/node-security-group-id` | String | `-k8s` | idem (`allowed_security_group_ids`): é o SG do cluster que o EKS aplica aos nodes |
-| `/mecanica/os/os-eventos-topic-arn` | String | os | `infra/` do identity. **Obrigatório a partir da F4**, com este nome exato: a assinatura `os-eventos → identity-notificacoes` só é criada se ele existir (F3-h). Sem ele, o CD do Identity segue verde e o output `assinatura_os_eventos` mostra `pendente: OS sem infra` |
+| `/mecanica/os/os-eventos-topic-arn` | String | os | Não é mais lido pelo Identity (F4-a). Continua publicado para os scripts e a F8 |
+| `/mecanica/identity/notificacoes-queue-arn` | String | identity | `infra/` do OS (assinatura `os-eventos → identity-notificacoes`, F4-a) |
+| `/mecanica/execucao/execucao-eventos-topic-arn` | String | execucao | `infra/` do OS (assinatura e policy da `os-saga-respostas`) |
+| `/mecanica/execucao/execucao-comandos-queue-url` | String | execucao | `infra/` do OS (`MESSAGING_DESTINO_EXECUCAO_COMANDOS`); `demo-saga-os.sh` |
+| `/mecanica/billing/billing-eventos-topic-arn` | String | billing | `infra/` do OS |
+| `/mecanica/billing/billing-comandos-queue-url` | String | billing | `infra/` do OS (`MESSAGING_DESTINO_BILLING_COMANDOS`) |
 | `/mecanica/identity/jwt-secret-arn` | String | identity | `scripts/smoke-borda.sh` (assina o token de teste) |
-| `/mecanica/identity/jwt-public-key` | String | identity | `infra/` do `-auth` (env `JWT_PUBLIC_KEY` da Lambda) |
+| `/mecanica/identity/jwt-public-key` | String | identity | `infra/` do `-auth` (env `JWT_PUBLIC_KEY` da Lambda) e dos serviços `execucao`, `billing` e `os` (`JWT_PUBLIC_KEY` do `app_config`) |
 | `/mecanica/auth/api-url` | String | `-auth` | smoke do `servico-cd`; scripts |
+
+### 2.7.1 Ordem de provisionamento (B4)
+```
+cluster.yml (-k8s)
+  └─ identity     RDS, ECR, par JWT, fila de notificações → SSM jwt-public-key, notificacoes-queue-arn
+      └─ execucao ECR, tópico de eventos, fila de comandos → SSM (lê jwt-public-key)
+          └─ billing  ECR, RDS, tópico de eventos, fila de comandos → SSM (lê jwt-public-key)
+              └─ os   RDS, ECR, tópico os-eventos, fila os-saga-respostas, 3 assinaturas (lê tudo acima)
+                  └─ -auth   API GW + authorizer (lê nlb-dns e jwt-public-key)
+                      └─ smoke-borda.sh
+```
+Destruição, inversa: `-auth` → `os` → `billing` → `execucao` → `identity` → cluster. O OS sai antes dos tópicos e da fila que ele assina. O `subir-ambiente.sh` usa `SERVICOS=(identity execucao billing os)`. Motivo: o OS, o Billing e o Execução precisam da chave pública do JWT, que só existe depois do `apply` do Identity (ADR-F4-03).
 
 ### 2.8 Recursos do cluster e da borda
 | Recurso | Nome | Repo |
