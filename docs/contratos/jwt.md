@@ -40,6 +40,34 @@ Exemplo de payload:
 }
 ```
 
+## Emissão
+
+O Identity emite o token em dois logins públicos, que devolvem o mesmo corpo (200, com `Cache-Control: no-store`):
+
+```json
+{ "accessToken": "<jwt>", "tokenType": "Bearer", "expiresIn": 3600 }
+```
+
+| Login | Corpo da requisição | Token emitido |
+|---|---|---|
+| `POST /auth/login` | `{"email", "senha"}` | `principal_type=FUNCIONARIO`, com o `cargo` do usuário |
+| `POST /auth/cpf` | `{"cpf"}` (com ou sem máscara) | `principal_type=CLIENTE`, sem `cargo`. Só cliente PF ativo; PJ não tem CPF |
+
+**Erros** (sempre no `ErrorResponse` do serviço, sem enumeração de usuários):
+
+| Situação | Status | Código |
+|---|---|---|
+| Staff: e-mail inexistente, senha errada ou usuário inativo (mesma mensagem nos três casos) | 401 | `CREDENCIAIS_INVALIDAS` |
+| CPF com formato ou dígito inválido | 400 | `CPF_INVALIDO` |
+| CPF válido, mas cliente inexistente, inativo ou PJ | 401 | `ACESSO_NEGADO` |
+| Identity sem chave privada | 503 | `EMISSOR_INDISPONIVEL` |
+
+**Emissor:** `JwtTokenIssuerAdapter` assina com `JWT_PRIVATE_KEY` (PKCS#8; PEM, PEM com `\n` escapado ou `file:<caminho>`), `kid=mecanica-identity-v1`, `exp = iat + 3600` e `jti` novo a cada emissão.
+
+- **Sem `JWT_PRIVATE_KEY`:** o serviço sobe, os logins respondem 503 e o log registra `chave_privada_ausente`.
+- **Chaves que não formam par:** com as duas chaves presentes, o Identity assina um token de amostra e o valida na inicialização. Se falhar, lança `IllegalStateException("par_jwt_inconsistente")` e **não sobe**. Assim, um par trocado derruba o rollout do CD em vez de ir ao ar rejeitando todo token.
+- Os logs `login_aceito` e `login_negado` trazem `principalType` e `motivo`, nunca e-mail, CPF, senha ou token.
+
 ## Validação nos serviços
 
 Implementada no `JwtTokenValidator` do esqueleto:

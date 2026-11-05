@@ -75,11 +75,12 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 | Item | Valor |
 |---|---|
 | Saldo antes da janela (2026-11-04, 22:12 UTC) | US$ 50,00 |
-| Saldo depois da janela (2026-11-04, 23:45 UTC) | US$ 50,00 no painel, que ainda não refletia a janela. **Reconferir no início do D8** |
+| Saldo depois da janela (reconferido em 2026-11-05) | US$ 49,50 (painel: "Used US$ 0.5 of US$ 50"). O painel atualiza com atraso de horas |
 | Duração da janela com recurso ligado | ≈ 2 h 05 min: 1º ciclo de ~22:15 a ~23:40 UTC (inclui ~20 min com o EKS e o NLB ligados sem nodes, por causa das falhas corrigidas nos PRs #12 do `-k8s` e #5 do Identity) e 2º ciclo de ~23:59 a ~00:39 UTC |
-| Custo medido por hora | Pendente (D8). Pela estimativa, a janela custou ≈ 2,1 h × US$ 0,35 ≈ **US$ 0,70** |
+| Custo medido da janela | **US$ 0,50** (a estimativa era ≈ US$ 0,70) |
+| Custo medido por hora | ≈ **US$ 0,24/h** (US$ 0,50 ÷ ≈ 2,1 h), abaixo dos ≈ US$ 0,35/h estimados. As estimativas seguintes continuam com US$ 0,35/h, por prudência, até a janela do D8 confirmar |
 
-> O painel do Learner Lab atualiza o saldo com atraso de algumas horas. Se o valor "depois" ainda não refletir a janela, conferir de novo no início do D8 e atualizar esta tabela.
+> O painel do Learner Lab atualiza o saldo com atraso de algumas horas. O saldo do D8 será anotado no registro da janela da F3.
 
 ## Decisão
 

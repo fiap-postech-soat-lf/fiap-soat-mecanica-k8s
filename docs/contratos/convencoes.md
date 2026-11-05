@@ -137,6 +137,7 @@ Todos `String` (ou `StringList`), lidos com `insecure_value` nos data sources pa
 | `/mecanica/k8s/vpc-id` | String | `-k8s` | `infra/` dos serviços (módulo `-db`) |
 | `/mecanica/k8s/subnet-ids` | StringList | `-k8s` | idem |
 | `/mecanica/k8s/node-security-group-id` | String | `-k8s` | idem (`allowed_security_group_ids`): é o SG do cluster que o EKS aplica aos nodes |
+| `/mecanica/os/os-eventos-topic-arn` | String | os | `infra/` do identity. **Obrigatório a partir da F4**, com este nome exato: a assinatura `os-eventos → identity-notificacoes` só é criada se ele existir (F3-h). Sem ele, o CD do Identity segue verde e o output `assinatura_os_eventos` mostra `pendente: OS sem infra` |
 | `/mecanica/identity/jwt-secret-arn` | String | identity | `scripts/smoke-borda.sh` (assina o token de teste) |
 | `/mecanica/identity/jwt-public-key` | String | identity | `infra/` do `-auth` (env `JWT_PUBLIC_KEY` da Lambda) |
 | `/mecanica/auth/api-url` | String | `-auth` | smoke do `servico-cd`; scripts |

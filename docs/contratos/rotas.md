@@ -15,6 +15,15 @@ Base das IngressRoutes do Traefik (`k8s/ingressroute.yaml` de cada serviço, ger
 | `GET /{svc}/swagger-ui/**`, `/{svc}/swagger-ui.html`, `/{svc}/v3/api-docs/**` | o próprio | 🔓 público |
 | `/health-echo` | `mecanica-echo` (`traefik/whoami`, só no `-k8s`) | JWT (diagnóstico da borda: devolve os headers recebidos) |
 
+## Chamadas entre serviços
+
+Quando um serviço chama outro por REST, ele **repassa o JWT de quem chamou** (o header `Authorization` da requisição em andamento). Não existe token de serviço: o chamado valida o mesmo token e aplica o seu próprio perfil (F3-a).
+
+| Chamada | Rota chamada | Perfil aceito |
+|---|---|---|
+| OS → Identity | `GET /veiculos/{id}` | **ATENDENTE ou MECANICO** (os dois cargos que abrem OS) |
+| Execução → OS (F5) | `GET /servicos/{id}` | MECANICO |
+
 ## Como o API Gateway encaminha
 
 - As rotas públicas são **explícitas** (método + caminho): as 4 de negócio acima e 6 de health/Swagger por serviço, 28 no total. Não existe `/auth/**` público: qualquer outro caminho sob `/auth` cai no fallback protegido.
