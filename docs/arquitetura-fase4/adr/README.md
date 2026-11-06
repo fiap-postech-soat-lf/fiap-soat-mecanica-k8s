@@ -24,5 +24,5 @@ RFCs em [`../rfc/`](../rfc/):
 | RFC | Tema | Status |
 |---|---|---|
 | RFC-F4-01 | Mercado Pago | *TODO* (F6) |
-| RFC-F4-02 | Modelagem DynamoDB do Execução | *TODO* (F5) |
+| [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md) | Modelagem DynamoDB do Execução: 6 tabelas, GSIs esparsos `fila` e `pendentes`, estoque materializado e reserva atômica | Proposto (F5) |
 | [RFC-F4-03](../rfc/RFC-F4-03-capacidade-e-custo.md) | Capacidade e custo do ambiente no Academy (números da janela do D7) | Aprovado |
