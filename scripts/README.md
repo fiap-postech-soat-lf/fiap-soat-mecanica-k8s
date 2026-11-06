@@ -13,8 +13,8 @@ Scripts de administração da org `fiap-postech-soat-lf` e da conta AWS Academy.
 | `subir-ambiente.sh` | F2 T05 | Início de cada janela com o EKS: credenciais → `cluster.yml` → CDs de `identity`, `execucao`, `billing` e `os` (quem tiver `infra/*.tf`) → CD do `-auth` → `smoke-borda.sh`, com o tempo de cada etapa |
 | `destruir-ambiente.sh` | F2 T05 | Fim de **toda** janela: dispara o `destruir-ambiente.yml`, espera e roda o `verificar-orfaos.sh` |
 | `verificar-orfaos.sh` | F2 T05 | Depois do destroy (saída 0 = conta limpa, 1 = sobrou recurso, 2 = erro de consulta). Só leitura |
-| `smoke-borda.sh` | F2 T05 | Com o ambiente ligado: verificações 5–18 (F2 + CP1 + CP2): 401, 403, 200 com `x-user-*`, rota pública, logins do Identity e a borda até o OS, o Execução e o Billing. Só leitura |
-| `demo-saga-os.sh` | F4 T09 | Com o ambiente ligado: abre uma OS, confere o comando na fila, simula o `DiagnosticoAberto`, cancela e confere as notificações no Identity. **Escreve dados** (prova do CP2) |
+| `smoke-borda.sh` | F2 T05 | Com o ambiente ligado: verificações 5–21 (F2 + CP1 + CP2 + F5): 401, 403, 200 com `x-user-*`, rota pública, logins do Identity, a borda até o OS, o Execução e o Billing e as rotas `/pecas` e `/execucoes/fila` do Execução. Só leitura |
+| `demo-saga-execucao.sh` | F5 T08 | Com o ambiente ligado: abre uma OS até `EM_DIAGNOSTICO` com o Execução real, monta o diagnóstico com uma peça do seed, confere a reserva (`qtdDisponivel − 2`) e o `GerarOrcamento` de R$ 159,80, cancela e confere a devolução ao estoque; depois cancela uma segunda OS sem reserva (F5-b) e confere as DLQs e o log. **Escreve dados** (prova da F5; substitui o `demo-saga-os.sh`, que simulava o Execução) |
 | `destruir-stack.sh` | F2 T05 | Usado pelo `destruir-ambiente.yml`; à mão, destrói um stack pela key do state (pula state vazio) |
 | `lib-workflows.sh` | F2 T05 | Funções comuns (`disparar_e_esperar`), carregado com `source` |
 

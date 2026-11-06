@@ -6,13 +6,15 @@ set -euo pipefail
 
 REGIAO=us-east-1
 CONTA=000000000000
-FILAS=(mecanica-execucao-comandos mecanica-billing-comandos mecanica-os-saga-respostas mecanica-identity-notificacoes)
+FILAS=(mecanica-execucao-comandos mecanica-execucao-os-eventos mecanica-billing-comandos mecanica-os-saga-respostas mecanica-identity-notificacoes)
 TOPICOS=(mecanica-execucao-eventos mecanica-billing-eventos mecanica-os-eventos)
-# topico:fila (entrega raw)
+# topico:fila[:type] (entrega raw). Com o terceiro campo, a assinatura so recebe mensagens cujo atributo
+# type seja esse (FilterPolicy), como a do Execucao em F5-b.
 ASSINATURAS=(
   mecanica-execucao-eventos:mecanica-os-saga-respostas
   mecanica-billing-eventos:mecanica-os-saga-respostas
   mecanica-os-eventos:mecanica-identity-notificacoes
+  mecanica-os-eventos:mecanica-execucao-os-eventos:OrdemServicoCancelada
 )
 
 arn_fila() { echo "arn:aws:sqs:$REGIAO:$CONTA:$1"; }
@@ -38,7 +40,8 @@ done
 # o LocalStack nao exige).
 declare -A ORIGENS=()
 for assinatura in "${ASSINATURAS[@]}"; do
-  fila=${assinatura#*:}
+  resto=${assinatura#*:}
+  fila=${resto%%:*}
   ORIGENS[$fila]+="$(arn_topico "${assinatura%%:*}") "
 done
 for fila in "${!ORIGENS[@]}"; do
@@ -57,12 +60,15 @@ for fila in "${!ORIGENS[@]}"; do
 done
 
 for assinatura in "${ASSINATURAS[@]}"; do
+  resto=${assinatura#*:}
+  fila=${resto%%:*}
+  tipo=${resto#"$fila"}
+  tipo=${tipo#:}
+  # O FilterPolicy e uma string JSON dentro do JSON dos atributos.
+  atributos=$(json '{"RawMessageDelivery": "true",
+    **({"FilterPolicy": json.dumps({"type": [sys.argv[1]]})} if sys.argv[1] else {})}' "$tipo")
   awslocal sns subscribe --topic-arn "$(arn_topico "${assinatura%%:*}")" --protocol sqs \
-    --notification-endpoint "$(arn_fila "${assinatura#*:}")" \
-    --attributes RawMessageDelivery=true > /dev/null
+    --notification-endpoint "$(arn_fila "$fila")" --attributes "$atributos" > /dev/null
 done
-
-# TODO F5: tabelas DynamoDB do Execucao (execucao-ordens, execucao-pecas, execucao-reservas,
-# execucao-outbox, execucao-idempotencia), depois da modelagem da RFC-F4-02.
 
 echo "mensageria criada: ${#FILAS[@]} filas (+ DLQs), ${#TOPICOS[@]} topicos, ${#ASSINATURAS[@]} assinaturas raw"

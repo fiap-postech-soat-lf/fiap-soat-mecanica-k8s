@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Smoke da borda: verificacoes 5-18 (F2 + CP1 + CP2). API Gateway + Lambda Authorizer + NLB +
-# Traefik + Identity, incluindo os logins reais do Identity (10-14) e a borda ate o OS, o Execucao
-# e o Billing (15-18). Imprime PASS/FAIL.
+# Smoke da borda: verificacoes 5-21 (F2 + CP1 + CP2 + F5). API Gateway + Lambda Authorizer + NLB +
+# Traefik + Identity, incluindo os logins reais do Identity (10-14), a borda ate o OS, o Execucao
+# e o Billing (15-18) e as rotas de pecas e da fila do Execucao (19-21). Imprime PASS/FAIL.
 #
 # Uso: scripts/smoke-borda.sh
 # Le do SSM /mecanica/auth/api-url, /mecanica/k8s/nlb-dns e /mecanica/identity/jwt-secret-arn.
 # A chave privada do Identity vai para um arquivo temporario 0600, apagado na saida, e assina
-# os tokens com local/jwt/gerar-token-dev.sh. Os dois POST de login so leem: nao altera nada.
+# os tokens com local/jwt/gerar-token-dev.sh. Os POST de login so leem: nao altera nada (F3-k).
 # Saida: 0 se tudo passar, 1 se alguma verificacao falhar.
 # Variaveis: AWS_REGION (padrao us-east-1)
 set -euo pipefail
@@ -25,12 +25,17 @@ CPF_SEED="52998224725"
 CLIENTE_ID_SEED="33333333-3333-3333-3333-333333333333"
 VEICULO_ID_SEED="44444444-4444-4444-4444-444444444444"
 EMAIL_MECANICO_SEED="mecanico@mecanica.test"
+EMAIL_ALMOXARIFE_SEED="almoxarife@mecanica.test"
 SENHA_SEED="Senha@123"
 CPF_VALIDO_NAO_CADASTRADO="39053344705"
 # Seed do catalogo do OS (V6__seed.sql em fiap-soat-mecanica-os) e placa do veiculo do seed.
 SERVICO_SEED_1="77777777-7777-7777-7777-777777777777"
 SERVICO_SEED_2="77777777-7777-7777-7777-777777777778"
 PLACA_SEED="ABC1D23"
+# Pecas do seed do Execucao (SeedPecas, os 3 INSERT do V9 do monolito).
+PECA_SEED_1="55555555-5555-5555-5555-555555555555"
+PECA_SEED_2="55555555-5555-5555-5555-555555555556"
+PECA_SEED_3="55555555-5555-5555-5555-555555555557"
 
 ssm() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text; }
 
@@ -207,6 +212,35 @@ if [[ "$status" == 403 ]] && jq -e '.status == 403 and has("erro")' "$TMP/s18.co
   pass 18 "GET /ordem-servicos com token de cliente -> 403 do OS" "HTTP 403"
 else
   fail 18 "GET /ordem-servicos com token de cliente -> 403 do OS" "obtido $status: $(head -c 200 "$TMP/s18.corpo")"
+fi
+
+# 19-21: as rotas do Execucao da F5. So leitura.
+# 19. O almoxarife do seed lista as pecas: o SeedPecas gravou as 3 do V9.
+status=$(post_json s19a "$API/auth/login" "{\"email\":\"$EMAIL_ALMOXARIFE_SEED\",\"senha\":\"$SENHA_SEED\"}")
+TOKEN_ALMOXARIFE=$(jq -r '.accessToken // empty' "$TMP/s19a.corpo" 2> /dev/null || true)
+conferir_status 19a "POST /auth/login como almoxarife -> 200" 200 "$status"
+status=$(requisitar s19b "$API/pecas" -H "Authorization: Bearer $TOKEN_ALMOXARIFE")
+if [[ "$status" == 200 ]] && jq -e --arg a "$PECA_SEED_1" --arg b "$PECA_SEED_2" --arg c "$PECA_SEED_3" \
+  'map(.id) | (index($a) != null) and (index($b) != null) and (index($c) != null)' "$TMP/s19b.corpo" > /dev/null 2>&1; then
+  pass 19b "GET /pecas com token de almoxarife -> 200 com as 3 pecas do seed" "HTTP 200"
+else
+  fail 19b "GET /pecas com token de almoxarife -> 200 com as 3 pecas do seed" "obtido $status: $(head -c 200 "$TMP/s19b.corpo")"
+fi
+
+# 20. O mecanico le a fila de execucao (a lista pode estar vazia).
+status=$(requisitar s20 "$API/execucoes/fila" -H "Authorization: Bearer $TOKEN_MECANICO")
+if [[ "$status" == 200 ]] && jq -e '.itens | type == "array"' "$TMP/s20.corpo" > /dev/null 2>&1; then
+  pass 20 "GET /execucoes/fila com token de mecanico -> 200 com a lista" "HTTP 200"
+else
+  fail 20 "GET /execucoes/fila com token de mecanico -> 200 com a lista" "obtido $status: $(head -c 200 "$TMP/s20.corpo")"
+fi
+
+# 21. Mecanico nao le o catalogo de pecas: o 403 vem do Execucao (ErrorResponse), e nao do API Gateway.
+status=$(requisitar s21 "$API/pecas" -H "Authorization: Bearer $TOKEN_MECANICO")
+if [[ "$status" == 403 ]] && jq -e '.status == 403 and has("erro")' "$TMP/s21.corpo" > /dev/null 2>&1; then
+  pass 21 "GET /pecas com token de mecanico -> 403 do Execucao" "HTTP 403"
+else
+  fail 21 "GET /pecas com token de mecanico -> 403 do Execucao" "obtido $status: $(head -c 200 "$TMP/s21.corpo")"
 fi
 
 echo
