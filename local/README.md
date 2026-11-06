@@ -16,12 +16,12 @@ Os serviços Java **não** rodam no compose. Cada um sobe pela IDE ou com `./mvn
 ```bash
 cd /home/rede/git/fase4/fiap-soat-mecanica-k8s
 docker compose -f local/docker-compose.yml up -d --wait   # ~1 min: o LocalStack só fica healthy depois do init
-local/verificar.sh                                        # OK nas 4 filas (+ DLQs), 3 tópicos, 3 assinaturas e no teste raw
+local/verificar.sh                                        # OK nas 6 tabelas DynamoDB, 5 filas (+ DLQs), 3 tópicos, 4 assinaturas e nos testes ponta a ponta
 ```
 
-O `verificar.sh` publica um envelope em `mecanica-execucao-eventos` e confere que ele chega em `mecanica-os-saga-respostas` idêntico, sem o embrulho do SNS. Pare o OS local antes, porque ele consome essa fila.
+O `verificar.sh` publica um envelope em `mecanica-execucao-eventos` e confere que ele chega em `mecanica-os-saga-respostas` idêntico, sem o embrulho do SNS. Ele também publica uma `SituacaoOrdemServicoAlterada` e uma `OrdemServicoCancelada` em `mecanica-os-eventos` e confere que só a segunda chega na `mecanica-execucao-os-eventos` (filtro da assinatura, F5-b). Pare o OS e o Execução locais antes, porque eles consomem essas filas.
 
-O LocalStack não guarda estado: a cada `up`, o `localstack/init/ready.d/01-mensageria.sh` recria a mensageria. Os bancos ficam em volumes nomeados; `docker compose -f local/docker-compose.yml down -v` apaga tudo.
+O LocalStack não guarda estado: a cada `up`, os scripts de `localstack/init/ready.d/` recriam a mensageria (`01-mensageria.sh`) e as tabelas DynamoDB (`02-dynamodb.sh`). Os bancos ficam em volumes nomeados; `docker compose -f local/docker-compose.yml down -v` apaga tudo.
 
 ## Token de desenvolvimento
 
@@ -40,7 +40,22 @@ Duas variáveis mudam o token: `CHAVE_PRIVADA=<arquivo>` assina com outra chave 
 - Filas padrão com `VisibilityTimeout=30`, retenção de 4 dias e redrive para a `-dlq` após 5 recebimentos.
 - Assinaturas com `RawMessageDelivery=true`: o corpo na fila é o próprio envelope.
 - Para um serviço consumir no perfil `local`, use `app.messaging.consumidor.filas=http://sqs.us-east-1.localhost.localstack.cloud:4566/000000000000/<fila>`.
-- As tabelas DynamoDB do Execução entram na F5 (RFC-F4-02).
+- A assinatura `mecanica-os-eventos → mecanica-execucao-os-eventos` tem `FilterPolicy {type: [OrdemServicoCancelada]}` (F5-b): o Execução só recebe o cancelamento.
+
+## DynamoDB (Execução)
+
+O `02-dynamodb.sh` cria, com os mesmos nomes, chaves, GSIs e TTL do `infra/dynamodb.tf` do `-execucao` (RFC-F4-02), as 6 tabelas on-demand:
+
+| Tabela | Chave | GSI esparso / TTL |
+|---|---|---|
+| `execucao-ordens` | `osId` | GSI `fila` (`fila` + `filaOrdem`) |
+| `execucao-pecas` | `pecaId` | — |
+| `execucao-reservas` | `osId` + `pecaId` | — |
+| `execucao-outbox` | `id` | GSI `pendentes` (`pendente` + `criadoEm`); TTL `expiraEm` |
+| `execucao-idempotencia` | `messageId` | TTL `expiraEm` |
+| `execucao-tempos` | `servicoId` | — |
+
+O script é idempotente (pula a tabela que já existe). O seed das 3 peças é feito pelo próprio Execução (`SeedPecas`) ao subir.
 
 ## LocalStack e licença
 
