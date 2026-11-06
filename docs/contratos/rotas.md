@@ -10,7 +10,7 @@ Base das IngressRoutes do Traefik (`k8s/ingressroute.yaml` de cada serviço, ger
 | `/ordem-servicos/**`, `/servicos/**` | os | JWT (perfis na seção abaixo) |
 | `POST /webhooks/mercadopago` | billing | 🔓 público (validado por HMAC `x-signature`) |
 | `/orcamentos/**`, `/pagamentos/**` | billing | JWT |
-| `/execucoes/**`, `/prestacoes/**`, `/pecas/**`, `/alocacoes/**` | execucao | JWT |
+| `/execucoes/**`, `/pecas/**` | execucao | JWT (perfis na seção abaixo) |
 | `GET /{identity\|os\|billing\|execucao}/actuator/health/**` | o próprio | 🔓 público |
 | `GET /{svc}/swagger-ui/**`, `/{svc}/swagger-ui.html`, `/{svc}/v3/api-docs/**` | o próprio | 🔓 público |
 | `/health-echo` | `mecanica-echo` (`traefik/whoami`, só no `-k8s`) | JWT (diagnóstico da borda: devolve os headers recebidos) |
@@ -45,6 +45,40 @@ Erros próprios do OS (`ErrorResponse`):
 
 Saíram do controller do monolito e passaram a ser feitos por evento da Saga, ou foram para outro serviço: `POST /abrir`, `iniciar-execucao`, `enviar-para-aguardar-aprovacao`, `pagar` (Saga), `aprovar-orcamento` e `recusar-orcamento` (Billing) e `tempo-medio` (Execução).
 
+## Rotas e perfis do Execução
+
+O perfil é verificado pelo próprio Execução (`ROLE_<tipo>` e `ROLE_<cargo>` do JWT). As prestações e as alocações ficam aninhadas na ordem (F5-c): o DynamoDB não indexa elementos de lista, então toda rota de escrita leva o `osId`. Por isso o prefixo `/prestacoes` e `/alocacoes` deixaram de existir.
+
+| Rota | Perfil |
+|---|---|
+| `GET /execucoes/fila?size&cursor` (já ordenada: `EM_EXECUCAO`, `DIAGNOSTICO_CONCLUIDO`, `EM_DIAGNOSTICO`, e depois a data; `size` padrão 20, máximo 100; `cursor` opaco) | MECANICO |
+| `GET /execucoes/{osId}` (ordem com prestações, alocações e reservas) | MECANICO ou ALMOXARIFE |
+| `POST /execucoes/{osId}/prestacoes` (`{servicoId, precoMaoDeObra}` → 201; valida o serviço no OS) | MECANICO |
+| `PATCH /execucoes/{osId}/prestacoes/{id}/inativar` | MECANICO |
+| `POST /execucoes/{osId}/prestacoes/{id}/pecas` (`{pecaId, quantidade}` → 201; **não mexe no estoque**, a reserva vem da Saga) | ALMOXARIFE |
+| `PATCH /execucoes/{osId}/alocacoes/{id}/inativar` | ALMOXARIFE |
+| `PATCH /execucoes/{osId}/diagnostico/concluir` (emite `DiagnosticoConcluido`) | MECANICO |
+| `PATCH /execucoes/{osId}/diagnostico/reabrir` (**novo**, F5-k: só em `DIAGNOSTICO_CONCLUIDO` sem reserva ativa) | MECANICO |
+| `PATCH /execucoes/{osId}/prestacoes/{id}/finalizar` (a última prestação ativa emite `ExecucaoFinalizada`) | MECANICO |
+| `GET /execucoes/tempo-medio[?servicoId=]` | MECANICO |
+| `POST /pecas`, `PUT /pecas/{id}`, `GET /pecas/{id}`, `GET /pecas` | ALMOXARIFE |
+| 🔓 `/actuator/health/**`, Swagger, `/error` | público |
+
+Não há rota para iniciar a execução: ela começa pelo comando `IniciarExecucao`, depois da aprovação do orçamento. `GET /pecas/{id}` devolve `qtdEstoque`, `qtdReservada` e `qtdDisponivel` (com `qtdEstoque = qtdDisponivel + qtdReservada`). O `PUT /pecas/{id}` altera `qtdEstoque` respeitando a reserva: um valor abaixo do reservado é recusado.
+
+Erros próprios do Execução (`ErrorResponse`):
+
+| Situação | Status | Código |
+|---|---|---|
+| Serviço do catálogo inexistente ou inativo | 422 | `SERVICO_INVALIDO` |
+| OS fora do ar (retries esgotados) | 503 | `OS_INDISPONIVEL` |
+| OS recusou o token repassado | 502 | `INTEGRACAO_OS` |
+| Ordem desconhecida (o `AbrirDiagnostico` ainda não chegou) | 404 | recurso não encontrado |
+| Transição inválida (por exemplo, incluir prestação numa ordem `EM_EXECUCAO`, ou `PUT /pecas` com estoque abaixo do reservado) | 422 | regra de negócio |
+| Conflito de versão ou de estoque | 409 | `CONFLITO_CONCORRENTE` (o cliente repete a operação) |
+
+Saíram do monolito: `PATCH /prestacao-servico/{id}/...` e `/alocacao-pecas/...` (viraram as rotas aninhadas acima) e `tempo-medio` do controller da OS (agora `GET /execucoes/tempo-medio`).
+
 ## Chamadas entre serviços
 
 Quando um serviço chama outro por REST, ele **repassa o JWT de quem chamou** (o header `Authorization` da requisição em andamento). Não existe token de serviço: o chamado valida o mesmo token e aplica o seu próprio perfil (F3-a).
@@ -56,6 +90,7 @@ Quando um serviço chama outro por REST, ele **repassa o JWT de quem chamou** (o
 
 ## Como o API Gateway encaminha
 
+- O `-auth` não muda com as rotas do Execução: elas caem em `ANY /{proxy+}`, com o authorizer.
 - As rotas públicas são **explícitas** (método + caminho): as 4 de negócio acima e 6 de health/Swagger por serviço, 28 no total. Não existe `/auth/**` público: qualquer outro caminho sob `/auth` cai no fallback protegido.
 - Todo o resto cai em `ANY /{proxy+}`, com o Lambda Authorizer. O HTTP API escolhe a rota mais específica, então o fallback só pega o que nenhuma rota pública casou.
 - Duas integrações `HTTP_PROXY` para o NLB, as duas repassando o caminho e `x-correlation-id = $context.requestId`:

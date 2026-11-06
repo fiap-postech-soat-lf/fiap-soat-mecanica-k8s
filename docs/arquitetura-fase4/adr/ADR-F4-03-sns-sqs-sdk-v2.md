@@ -1,7 +1,7 @@
 # ADR-F4-03: SNS + SQS com AWS SDK v2 direto
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (decidido no planejamento; o uso do SDK direto é a decisão F1-c). Revisada em 2026-11-05 (F4-a: dono da assinatura do `os-eventos` e nova ordem B4)
+- **Data:** 2026-11-02 (decidido no planejamento; o uso do SDK direto é a decisão F1-c). Revisada em 2026-11-05 (F4-a: dono da assinatura do `os-eventos` e nova ordem B4) e em 2026-11-06 (F5-b: segunda assinatura do `os-eventos`, filtrada por `type`)
 - **Escopo:** transversal (os 4 serviços)
 - **Implementação:** `templates/servico-base/` (`SqsConsumidor`, `SnsSqsPublicador`, `DestinosMensageria`, `DlqDepthMetrics`), `local/localstack/init/ready.d/01-mensageria.sh`; contratos em `docs/contratos/`
 
@@ -18,6 +18,7 @@ Também era preciso escolher o cliente Java. O plano original previa validar o S
 - **Comandos** vão para a **fila do consumidor**: `mecanica-execucao-comandos` e `mecanica-billing-comandos`.
 - **Eventos** vão para o **tópico do produtor**: `mecanica-execucao-eventos`, `mecanica-billing-eventos` e `mecanica-os-eventos`. Cada tópico é assinado pela fila de quem consome: `mecanica-os-saga-respostas` e `mecanica-identity-notificacoes`.
 - **Dono das assinaturas:** em regra, **o consumidor** cria a assinatura do tópico que ele consome (`execucao-eventos` e `billing-eventos` → `os-saga-respostas`, no `infra/` do OS). **Exceção (F4-a):** a assinatura `os-eventos` → `identity-notificacoes` é criada pelo **`infra/` do OS**, que lê o ARN da fila em `/mecanica/identity/notificacoes-queue-arn`. O Identity cria a queue policy da fila sempre, com o ARN do tópico montado a partir do nome (`arn:aws:sns:<região>:<conta>:mecanica-os-eventos`).
+- **Segunda exceção (F5-b):** a assinatura `os-eventos` → `execucao-os-eventos` também é criada pelo **`infra/` do OS**, com `filter_policy = {type = ["OrdemServicoCancelada"]}`, que lê o ARN da fila em `/mecanica/execucao/os-eventos-queue-arn`. O Execução cria a fila `mecanica-execucao-os-eventos` (+ DLQ) e a queue policy com o ARN do tópico montado a partir do nome. O motivo é o mesmo da F4-a: o tópico `os-eventos` nasce depois do Execução na ordem B4. A fila existe porque o OS só manda `LiberarReservaPecas` quando houve `ReservarPecas`; sem ela, uma OS cancelada em `EM_DIAGNOSTICO` ficaria para sempre na fila do mecânico.
 - **Assinaturas** com `RawMessageDelivery=true`: o corpo na fila é o próprio envelope, sem o embrulho do SNS, e os atributos de mensagem (`type`) chegam na fila.
 - **Filas:** padrão (não FIFO), com `VisibilityTimeout=30`, retenção de 4 dias e DLQ com `maxReceiveCount=5`.
 - **Envelope comum** (`envelope.schema.json`): carrega `messageId`, `correlationId`, `causationId` e o `traceparent` W3C opcional. Assim o trace pode ser restaurado mesmo se a propagação automática se perder no SNS → SQS.
@@ -59,5 +60,6 @@ Destruição, inversa: `-auth` → `os` → `billing` → `execucao` → `identi
 **Negativas / riscos**
 - **Código próprio de infraestrutura:** poller, shutdown e pausa após erro são código nosso e precisam de teste. Isso foi coberto no esqueleto, com a manutenção concentrada no template.
 - **Destinos por variável explícita:** cada destino precisa de uma variável própria (`MESSAGING_DESTINO_<NOME>`), porque a ligação relaxada do Spring não preserva o `-` das chaves de mapa vindas de variáveis de ambiente.
-- **Uma exceção à regra "o consumidor é dono da assinatura":** quem lê o `infra/` do OS encontra uma assinatura cuja fila é do Identity. O nome do parâmetro `/mecanica/identity/notificacoes-queue-arn` fica fixado em `convencoes.md`.
+- **Duas exceções à regra "o consumidor é dono da assinatura":** quem lê o `infra/` do OS encontra duas assinaturas do `os-eventos` cujas filas são de outros serviços (Identity e Execução). Os nomes dos parâmetros `/mecanica/identity/notificacoes-queue-arn` e `/mecanica/execucao/os-eventos-queue-arn` ficam fixados em `convencoes.md`.
+- **Filtro por `type`:** a `FilterPolicy` usa o atributo de mensagem `type`, que o `SnsSqsPublicador` envia sempre. Com entrega raw, o atributo chega ao SNS e o filtro funciona. O passo 9 da janela da F5 confere a `FilterPolicy` da assinatura, e o `local/verificar.sh` confere a `FilterPolicy` no LocalStack.
 - **Long polling no shutdown:** pode atrasar o encerramento do pod em até ~25 s.
