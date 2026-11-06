@@ -6,13 +6,13 @@ Decisões de arquitetura transversais da Fase 4 (os 7 repositórios). As decisõ
 |---|---|---|
 | [ADR-F4-01](ADR-F4-01-decomposicao-em-4-servicos.md) | Decomposição em 4 serviços por bounded context (Identity, OS, Billing, Execução) | Aceito |
 | [ADR-F4-02](ADR-F4-02-saga-orquestrada.md) | Saga orquestrada no OS, com pivô em `IniciarExecucao` e só recuperação para frente depois dele; OS `CANCELADA` na hora da decisão, timeouts e reenvio (revisada na F4) | Aceito |
-| [ADR-F4-03](ADR-F4-03-sns-sqs-sdk-v2.md) | SNS + SQS (comando → fila do consumidor, evento → tópico do produtor, raw delivery, DLQ) com AWS SDK v2 direto; assinatura do `os-eventos` no `infra/` do OS e ordem B4 `identity → execucao → billing → os → auth` (revisada na F4) | Aceito |
-| [ADR-F4-04](ADR-F4-04-outbox-consumidor-idempotente.md) | Transactional Outbox (`FOR UPDATE SKIP LOCKED`) e consumidor idempotente por `messageId`; reenvio com `messageId` novo e `SKIP LOCKED` nos timeouts (revisada na F4) | Aceito |
-| [ADR-F4-05](ADR-F4-05-database-per-service.md) | Database per service: 3 RDS Postgres e DynamoDB no Execução | Aceito |
+| [ADR-F4-03](ADR-F4-03-sns-sqs-sdk-v2.md) | SNS + SQS (comando → fila do consumidor, evento → tópico do produtor, raw delivery, DLQ) com AWS SDK v2 direto; assinaturas do `os-eventos` no `infra/` do OS (Identity e, filtrada por `type`, Execução) e ordem B4 `identity → execucao → billing → os → auth` (revisada na F4 e na F5) | Aceito |
+| [ADR-F4-04](ADR-F4-04-outbox-consumidor-idempotente.md) | Transactional Outbox (`FOR UPDATE SKIP LOCKED`) e consumidor idempotente por `messageId`; reenvio com `messageId` novo e `SKIP LOCKED` nos timeouts; variante DynamoDB do Execução (revisada na F4 e na F5) | Aceito |
+| [ADR-F4-05](ADR-F4-05-database-per-service.md) | Database per service: 3 RDS Postgres e 6 tabelas DynamoDB no Execução (revisada na F5) | Aceito |
 | [ADR-F4-06](ADR-F4-06-borda-api-gateway-authorizer-nlb.md) | Borda: HTTP API + Lambda Authorizer + NLB público → Traefik NodePort; duas integrações; rotas públicas explícitas; 401 sem token e 403 com token inválido | Aceito |
 | [ADR-F4-07](ADR-F4-07-jwt-rs256.md) | JWT RS256 emitido pelo Identity: par gerado no Terraform, chave pública no SSM, chave nova a cada janela | Aceito |
 | [ADR-F4-08](ADR-F4-08-ecr-por-servico.md) | Um repositório ECR por serviço no `infra/` do serviço, `MUTABLE` e `force_delete` | Aceito |
-| [ADR-F4-09](ADR-F4-09-rest-sincrono-resilience4j.md) | REST síncrono (veículo e catálogo): timeout de 2 s, retry sem circuit breaker, repasse do JWT só no `RestClient` do Identity | Aceito |
+| [ADR-F4-09](ADR-F4-09-rest-sincrono-resilience4j.md) | REST síncrono (veículo e catálogo): timeout de 2 s, retry sem circuit breaker, repasse do JWT só nos clientes do Identity e do OS (revisada na F5) | Aceito |
 | ADR-F4-10 | Observabilidade | *TODO* (F8) |
 | [ADR-F4-11](ADR-F4-11-pipeline-padrao-e-ruleset.md) | Reusable workflows `@v1` e ruleset da `main` com PR e checks obrigatórios e 0 aprovações | Aceito |
 | [ADR-F4-12](ADR-F4-12-notificacoes-no-identity.md) | Notificações no Identity: consome `os-eventos`, adapter de log; a assinatura é do `infra/` do OS (revisada na F4) | Aceito |
@@ -24,5 +24,5 @@ RFCs em [`../rfc/`](../rfc/):
 | RFC | Tema | Status |
 |---|---|---|
 | RFC-F4-01 | Mercado Pago | *TODO* (F6) |
-| [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md) | Modelagem DynamoDB do Execução: 6 tabelas, GSIs esparsos `fila` e `pendentes`, estoque materializado e reserva atômica | Proposto (F5) |
+| [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md) | Modelagem DynamoDB do Execução: 6 tabelas, GSIs esparsos `fila` e `pendentes`, estoque materializado e reserva atômica | Aprovado (F5) |
 | [RFC-F4-03](../rfc/RFC-F4-03-capacidade-e-custo.md) | Capacidade e custo do ambiente no Academy (números da janela do D7) | Aprovado |

@@ -1,9 +1,9 @@
 # ADR-F4-04: Transactional Outbox e consumidor idempotente
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i)
-- **Escopo:** transversal (Identity, OS e Billing na versão SQL; Execução na versão DynamoDB, F5)
-- **Implementação:** `templates/servico-base/.../adapters/out/persistence/mensageria/` (`OutboxSqlAdapter`, `OutboxPublisher`, `ProcessadorMensagemSql`) e `V1__mensageria.sql`
+- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i) e em 2026-11-06 (variante DynamoDB, F5-f a F5-i)
+- **Escopo:** transversal (Identity, OS e Billing na versão SQL; Execução na versão DynamoDB, F5; ver a RFC-F4-02)
+- **Implementação:** `templates/servico-base/.../adapters/out/persistence/mensageria/` (`OutboxSqlAdapter`, `OutboxPublisher`, `ProcessadorMensagemSql`) e `V1__mensageria.sql`; no Execução, `adapters/out/dynamo/` (`TransacaoDynamo`) e `adapters/out/dynamo/mensageria/` (`OutboxDynamoAdapter`, `OutboxPublisherDynamo`, `ProcessadorMensagemDynamo`, `IdempotenciaDynamo`)
 
 ## Contexto
 
@@ -38,7 +38,12 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 
 **`SKIP LOCKED` também nos timeouts (F4-i):** o `SagaTimeoutScheduler` lê as instâncias vencidas (`prazo_em`) com `SELECT ... FOR UPDATE SKIP LOCKED` (até 20 por rodada, em `TransactionTemplate`, como o `OutboxPublisher`) e trata cada uma na mesma transação. Com 2 réplicas do OS, cada uma pega instâncias diferentes e nenhuma instância é tratada duas vezes. O `@Version` da `saga_instancia` cobre o caso restante, o de um handler e o scheduler na mesma Saga.
 
-**Execução (DynamoDB, F5):** mesma semântica com as tabelas `execucao-outbox` e `execucao-idempotencia`. A idempotência usa `PutItem` condicional com TTL, e a reserva de estoque usa `TransactWriteItems` (RFC-F4-02).
+**Execução (DynamoDB, F5):** mesma semântica, implementada só no `-execucao` (não há segundo serviço DynamoDB, então a variante não volta para o template). Detalhes na [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md):
+
+- **Transação (F5-f):** a `TransacaoDynamo` acumula as escritas do caso de uso ou do handler (negócio, outbox e idempotência) e grava tudo num único `TransactWriteItems` (até 100 itens). É o equivalente do `@Transactional` + `Propagation.MANDATORY`: o `OutboxDynamoAdapter` exige uma transação ativa.
+- **Idempotência por `messageId` (F5-g):** um `Put` condicional (`attribute_not_exists(messageId)`) em `execucao-idempotencia`, com TTL de 7 dias, dentro da mesma transação do handler. `ConditionalCheckFailed` nesse item significa mensagem duplicada e conclui sem efeito. Conflito de versão ou de estoque faz o `ProcessadorMensagemDynamo` repetir o handler até 3 vezes, com nova leitura, e depois devolver a mensagem à fila.
+- **Publicador (F5-i):** o `SKIP LOCKED` não existe no DynamoDB. A `execucao-outbox` tem um GSI esparso `pendentes` (atributo `pendente` só enquanto a linha não foi publicada), e o `OutboxPublisherDynamo` (1 s) reserva cada linha com um *lease* condicional (`reservadoAte`, 30 s) antes de publicar. Duas réplicas nunca publicam a mesma linha ao mesmo tempo. Se o pod cai entre publicar e remover `pendente`, o lease vence e a linha sai de novo; a duplicata é absorvida pela idempotência do OS (`mensagem_processada`). As publicadas ganham TTL de 1 dia.
+- **Reenvio da Saga (F5-h, requisito da F4-h):** o item da ordem guarda `comandosAtendidos[tipo] = {ids, resposta}`. Como o OS atualiza o `ultimoComando` a cada reenvio, o 2º reenvio traz como `causationId` o 1º reenvio, e não o original. Por isso o Execução guarda uma **cadeia de ids**: um comando cujo `messageId` ou `causationId` está na cadeia é um reenvio, e a resposta guardada é reemitida num envelope novo (`causationId` = o `messageId` recebido), com o id acrescentado à cadeia. Um comando fora da cadeia é uma nova rodada e substitui a entrada. Um `LiberarReservaPecas` sem reserva ativa responde `ReservaPecasLiberada` mesmo assim, porque o OS manda esse comando "por garantia" no timeout da reserva e espera a resposta.
 
 ## Alternativas consideradas
 
@@ -63,3 +68,4 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 - **Latência:** até ~1 s a mais por mensagem (intervalo do publicador), e duas tabelas a mais por serviço SQL (`V1__mensageria.sql`).
 - **Crescimento:** `mensagem_processada` cresce sem limpeza; uma rotina de expurgo fica para depois da F9, se o volume justificar.
 - **Destino quebrado:** uma linha com destino inválido é tentada a cada segundo indefinidamente. O alerta vem do log `outbox_publicacao_falhou`.
+- **Variante DynamoDB (F5):** o GSI é eventualmente consistente, então a publicação pode atrasar ~1 s além do intervalo. A condição do lease é avaliada na tabela base, e por isso uma linha que o GSI ainda mostra, mas já foi publicada, é descartada sem republicar. Os testes (`OutboxPublisherDynamoIT`, `ProcessadorMensagemDynamoIT`, `TransacaoDynamoIT`, `ParticipanteSagaTest`) cobrem rollback, duplicata, conflito e as três formas de reenvio.

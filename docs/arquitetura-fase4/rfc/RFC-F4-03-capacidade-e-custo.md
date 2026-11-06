@@ -1,7 +1,7 @@
 # RFC-F4-03: Capacidade e custo do ambiente no AWS Academy
 
 - **Status:** Aprovado
-- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7)
+- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00)
 - **Escopo:** `-k8s` (cluster e scripts do ambiente) e o planejamento das janelas F3–F9
 - **Base:** RFC-001 do `fiap-soat-mecanica-api-k8s` do grupo (EKS no Learner Lab), que continua valendo para as restrições do Academy
 
@@ -17,7 +17,7 @@ O ambiente da Fase 4 não fica ligado: cada janela de integração sobe tudo do 
 | Node group | 3 × `t3.medium` (2 vCPU, 4 GiB), desired 3 / min 1 / max 3, launch template IMDSv2 com hop limit 2 |
 | Add-ons no cluster | Traefik (chart 42.3.0, NodePort 30090), OpenTelemetry Operator 0.114.0, collector em DaemonSet, `metrics-server`, `whoami` de diagnóstico |
 | Borda | NLB público, HTTP API, Lambda Authorizer (Java 21, 512 MB) |
-| Serviços | Identity (1 RDS `db.t3.micro`, ECR) |
+| Serviços | Identity (1 RDS `db.t3.micro`, ECR). Do CP2 em diante: Identity, OS e Billing (3 RDS) e o Execução (6 tabelas DynamoDB on-demand) |
 
 ## Tempo de subida e destruição
 
@@ -78,31 +78,40 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 | Saldo depois da janela (reconferido em 2026-11-05) | US$ 49,50 (painel: "Used US$ 0.5 of US$ 50"). O painel atualiza com atraso de horas |
 | Duração da janela com recurso ligado | ≈ 2 h 05 min: 1º ciclo de ~22:15 a ~23:40 UTC (inclui ~20 min com o EKS e o NLB ligados sem nodes, por causa das falhas corrigidas nos PRs #12 do `-k8s` e #5 do Identity) e 2º ciclo de ~23:59 a ~00:39 UTC |
 | Custo medido da janela | **US$ 0,50** (a estimativa era ≈ US$ 0,70) |
-| Custo medido por hora | ≈ **US$ 0,24/h** (US$ 0,50 ÷ ≈ 2,1 h), abaixo dos ≈ US$ 0,35/h estimados. As estimativas seguintes continuam com US$ 0,35/h, por prudência, até a janela do D8 confirmar |
+| Custo medido por hora | ≈ **US$ 0,24/h** (US$ 0,50 ÷ ≈ 2,1 h), abaixo dos ≈ US$ 0,35/h estimados |
 
-> O painel do Learner Lab atualiza o saldo com atraso de algumas horas. O saldo do D8 será anotado no registro da janela da F3.
+> O painel do Learner Lab atualiza o saldo **só na virada do dia**, com uma casa decimal (± US$ 0,05). Por isso o saldo do dia anterior é anotado no início de cada fase (T00), e não logo depois da janela.
 
-**Janela do D8 (CP1):** o painel continuava em **US$ 49,50** em 2026-11-05 (reconferido no B0 da F4), sem refletir a janela. O custo do D8 está **pendente**: será conferido no passo 1 da janela do D10. Se ainda estiver em US$ 49,50, o gasto do D8 e o do D10 aparecerão somados, e serão rateados pelas horas ligadas de cada janela.
+**Janelas do D8 (CP1) e do CP2 (medidas em 2026-11-06):** o painel ficou em US$ 49,50 em 2026-11-05 e só refletiu as duas janelas na virada do dia: "Used US$ 1.3 of US$ 50", ou seja, **saldo de US$ 48,70**. A queda de US$ 0,80 desde o D7 foi rateada pelas horas ligadas de cada janela (do início do `subir-ambiente.sh` ao fim do `destruir-ambiente.sh`, tiradas dos logs em `evidencias/`):
 
-**Janela do D10 (CP2), estimativa:** o ambiente passa a ter 3 RDS (Identity, OS e Billing), ≈ US$ 0,40/h pela estimativa acima, ou ≈ US$ 0,25–0,30/h pela taxa medida no D7 (US$ 0,24/h com 1 RDS). Com ≈ 2 h 15 ligado, **≈ US$ 0,55–0,90**. Somado ao D7 (US$ 0,50 medido) e ao D8 (≈ US$ 0,45 estimado), o projeto fica em ≈ US$ 1,50–1,85 até o CP2. O valor medido do D10 entra aqui depois da janela.
+| Janela | Ambiente | Horas ligadas | Custo rateado | Estimativa anterior |
+|---|---|---|---|---|
+| D7 (F2) | 1 RDS | ≈ 2,1 h | US$ 0,50 (≈ US$ 0,24/h) | ≈ US$ 0,70 |
+| D8 (CP1) | — | ≈ 0,88 h | ≈ **US$ 0,25** | ≈ US$ 0,45 |
+| CP2 | 3 RDS | ≈ 1,92 h | ≈ **US$ 0,55** | US$ 0,55–0,90 |
+| **Total até o CP2** | | | **US$ 1,30** | |
+
+A taxa conjunta do D8 e do CP2 é de ≈ **US$ 0,29/h** (US$ 0,80 ÷ ≈ 2,8 h), com ± US$ 0,05 no total por causa do arredondamento do painel. É o valor a usar nas próximas janelas. O CP2, com 3 RDS, custou menos do que os ≈ US$ 0,40/h estimados pela tabela de preços; o que mais pesa na conta é o tempo ligado.
+
+**Janela da F5 (D9), estimativa:** o ambiente é o do CP2 mais as 6 tabelas DynamoDB on-demand, que custam centavos com o tráfego da demo. Com ≈ 1 h 50 ligado, a US$ 0,29/h: **≈ US$ 0,55** (US$ 0,50–0,60). O valor medido entra aqui depois da janela, na virada do dia.
 
 ## Decisão
 
 - **Ambiente efêmero por janela:** subir com `subir-ambiente.sh` e destruir com `destruir-ambiente.sh` ao fim de **toda** janela, sem exceção. O ambiente não fica ligado entre dias.
 - **Node group com max 3:** o corte 1 (HPA sem demonstração) dispensa a folga para escalar. Se a projeção de capacidade passar de ~80% do alocável, o próximo passo é subir o desired para 4, e não trocar o tipo de instância.
-- **Orçamento das janelas restantes** (estimativa, a confirmar com o saldo do D8):
+- **Orçamento das janelas restantes** (recalibrado em 2026-11-06 para ≈ US$ 0,29/h medidos; as horas das janelas futuras são estimativas, pelo calendário da F5-a):
 
   | Janela | Horas ligadas | US$/h | US$ |
   |---|---|---|---|
-  | D8 (CP1) | ~3 | 0,35 | ~1,05 |
-  | D10 (CP2) | ~5 | 0,37 | ~1,85 |
-  | D11 | ~3 | 0,37 | ~1,10 |
-  | D12 (CP3) | ~5 | 0,40 | ~2,00 |
-  | D13 (E2E, caos, dashboards) | ~6 | 0,40 | ~2,40 |
-  | D14 (gravação) | ~4 | 0,40 | ~1,60 |
-  | **Total** | **~26** | | **≈ US$ 10** |
+  | D7, D8 e CP2 (medido) | ≈ 4,9 | 0,24–0,29 | 1,30 |
+  | D9 (F5) | ~1,9 | 0,29 | ~0,55 |
+  | D10–D11 (F6: Mercado Pago, CP3) | ~6 | 0,29 | ~1,75 |
+  | D12 (F7: E2E) | ~5 | 0,29 | ~1,45 |
+  | D13 (F8: caos, dashboards) | ~6 | 0,29 | ~1,75 |
+  | D14 (F9: gravação) | ~4 | 0,29 | ~1,15 |
+  | **Total** | **~28** | | **≈ US$ 8** |
 
-  Mesmo com o dobro das horas (janelas com falha e ensaio), o total fica abaixo de US$ 25, metade do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 9,60 por dia), e não o custo das janelas.
+  Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 15, menos de um terço do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 7 por dia a US$ 0,29/h), e não o custo das janelas.
 
 ## Alternativas consideradas
 
@@ -116,4 +125,4 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 ## Riscos
 
 - **Credenciais de 4 h:** a subida leva ~45 min e o destroy ~20 min. Uma janela longa exige *Start Lab* e `atualizar-credenciais.sh` no meio, nunca durante um `apply`/`destroy`.
-- **Esquecer o ambiente ligado:** ≈ US$ 8–10 por dia. Mitigação: o `destruir-ambiente.sh` faz parte do fim de toda janela, e o `verificar-orfaos.sh` confirma que não sobrou recurso.
+- **Esquecer o ambiente ligado:** ≈ US$ 7–10 por dia (US$ 0,29/h medidos a US$ 0,40/h estimados). Mitigação: o `destruir-ambiente.sh` faz parte do fim de toda janela, e o `verificar-orfaos.sh` confirma que não sobrou recurso.

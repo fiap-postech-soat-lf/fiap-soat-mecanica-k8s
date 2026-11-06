@@ -1,7 +1,7 @@
 # RFC-F4-02: Modelagem DynamoDB do Execução
 
-- **Status:** Proposto (passa a Aprovado no fim da F5, com o que mudar durante a implementação)
-- **Data:** 2026-11-06, escrita antes de qualquer código do Execução
+- **Status:** Aprovado (F5, 2026-11-06)
+- **Data:** 2026-11-06, escrita antes de qualquer código do Execução e revisada no fim da F5 com o que mudou na implementação (seção "O que mudou na implementação")
 - **Escopo:** `fiap-soat-mecanica-execucao`: `adapters/out/dynamo/**`, `infra/dynamodb.tf` e as tabelas de teste (`TabelasDeTeste`)
 - **Base:** [ADR-F4-01](../adr/ADR-F4-01-decomposicao-em-4-servicos.md) (o Execução é dono de diagnóstico, prestações, fila, peças e estoque), [ADR-F4-04](../adr/ADR-F4-04-outbox-consumidor-idempotente.md) (outbox e consumidor idempotente) e [ADR-F4-05](../adr/ADR-F4-05-database-per-service.md) (DynamoDB no Execução)
 
@@ -9,7 +9,7 @@
 
 O Execução guarda seus dados em **6 tabelas DynamoDB on-demand**. A ordem de execução é um documento único, com prestações e alocações aninhadas. O estoque fica materializado em três contadores, e a reserva de N peças é um `TransactWriteItems` condicional: ou reserva todas, ou nenhuma. Toda escrita de negócio vai na mesma transação que a linha da outbox e o registro de idempotência. Dois GSIs esparsos atendem as duas listas ordenadas: a fila de execução e as mensagens pendentes da outbox.
 
-A modelagem parte dos padrões de acesso abaixo, e não das tabelas do monolito (`pecas`, `prestacao_servico` e `alocacao_pecas`, migrations V4, V7 e V8).
+A modelagem parte dos padrões de acesso abaixo, e não das tabelas do monolito (`pecas`, `prestacao_servico` e `alocacao_pecas`, migrations V4, V7 e V8). A reserva atômica é provada pelo `ReservaConcorrenteIT` (10 rodadas, duas threads disputando a última unidade).
 
 ## Padrões de acesso
 
@@ -110,7 +110,7 @@ Antes de montar a transação, as quantidades são **somadas por `pecaId`**: dua
 
 ## Transação, idempotência e conflitos
 
-A `TransacaoDynamo` acumula as escritas (`TransactWriteItem`) de um caso de uso ou de um handler e grava tudo num único `TransactWriteItems` no fim. Esse é o papel do `@Transactional` nos serviços SQL. O Enhanced Client só faz o mapeamento (`TableSchema`). As escritas usam a API de baixo nível, porque o Enhanced Client não monta expressões com conta nem `ADD`. Cada tentativa usa um `clientRequestToken` novo.
+A `TransacaoDynamo` acumula as escritas (`TransactWriteItem`) de um caso de uso ou de um handler e grava tudo num único `TransactWriteItems` no fim. Esse é o papel do `@Transactional` nos serviços SQL. As escritas e as leituras usam a API de baixo nível (`DynamoDbClient`), porque o Enhanced Client não monta expressões com conta nem `ADD`. O mapeamento entre itens e domínio é manual (`Itens`), como explica a seção "O que mudou na implementação". Cada tentativa usa um `clientRequestToken` novo.
 
 | Gatilho | Itens na transação |
 |---|---|
@@ -157,8 +157,25 @@ Na corrida pela última unidade, as duas reservas leem `qtdDisponivel = 1`, e s�
 | DynamoDB Streams no lugar do GSI `pendentes` | Exigiria uma Lambda ou um consumidor KCL a mais no Academy. O publicador agendado reaproveita o `SnsSqsPublicador` e tem a mesma semântica da outbox SQL |
 | Tabelas e seed de peças pelo Terraform (`aws_dynamodb_table_item`) | Cada `apply` voltaria o estoque ao valor do seed. O seed fica num `ApplicationRunner` com `Put` condicional |
 
+## O que mudou na implementação
+
+A modelagem (tabelas, chaves, GSIs, estoque e transações) saiu como estava nesta RFC. Mudaram só estes pontos:
+
+| Previsto | Realizado | Motivo |
+|---|---|---|
+| Beans `@DynamoDbBean` + `TableSchema` do Enhanced Client para o mapeamento | Mapeamento manual dos itens em `Itens` e `Atributos`; o `DynamoDbEnhancedClient` fica só no `DynamoConfig` | Com a escrita toda no cliente de baixo nível, os beans seriam um segundo modelo a manter, e o documento aninhado (prestações, alocações e `comandosAtendidos`) é mais direto de montar à mão |
+| `nome` da peça sem unicidade | Igual: sem índice em DynamoDB | Decisão do T03; a unicidade por nome do monolito não foi levada |
+| Controllers com `@WebMvcTest` | `MockMvc` com o contexto completo (`DiagnosticoIT`, `PecaControllerIT`, `PerfisIT`) | A regra do `CLAUDE.md` do Execução: um contexto Spring só nos ITs |
+| `spring-boot-starter-cache` para o catálogo do OS | Caffeine direto no `OsCatalogoClient` | O cache é de um método só, com TTL e só para respostas 200 |
+| Campos de peça no `POST`/`PUT /pecas` | A request e a resposta levam `qtdEstoque` (a `qtdDisponivel` e a `qtdReservada` só aparecem na resposta) | O invariante `qtdEstoque = qtdDisponivel + qtdReservada` é do domínio: quem escreve informa só o estoque total |
+| Dois `Put` no mesmo item da transação dão `ValidationException` | No LocalStack voltam como `ConditionalCheckFailed`; na AWS real, `ValidationException` | Diferença do emulador. Por isso a soma por `pecaId` é feita antes, e não há IT para esse caso |
+| `cursor` da fila é o `LastEvaluatedKey` | A rota não devolve uma página final vazia: o `cursor` só vem quando há mais itens | Detalhe coberto pelo `FilaIT` |
+| `GET /execucoes/tempo-medio` de um serviço sem amostras | Devolve lista vazia, e não zero | `minutosMedio` sem amostras não existe |
+
+O resultado medido pelos testes do PR do T05: 365 testes, cobertura de linhas de 98,1% e de ramos de 87,2%.
+
 ## Consequências
 
 - O `infra/dynamodb.tf` do Execução e o `TabelasDeTeste` criam as mesmas 6 tabelas e os 2 GSIs. O `TabelasDeTesteTest` confere a lista contra esta RFC, e o `infra/tests` confere nomes, chaves, índices e TTL.
 - A variante DynamoDB da mensageria (`TransacaoDynamo`, `OutboxDynamoAdapter`, `OutboxPublisherDynamo`, `ProcessadorMensagemDynamo` e `IdempotenciaDynamo`) fica só no `-execucao` e não volta para o template, porque não há outro serviço DynamoDB.
-- A [ADR-F4-04](../adr/ADR-F4-04-outbox-consumidor-idempotente.md) e a [ADR-F4-05](../adr/ADR-F4-05-database-per-service.md) passam a apontar para esta RFC na revisão da F5. O [`convencoes.md`](../../contratos/convencoes.md) ganha a 6ª tabela (`execucao-tempos`).
+- A [ADR-F4-04](../adr/ADR-F4-04-outbox-consumidor-idempotente.md) e a [ADR-F4-05](../adr/ADR-F4-05-database-per-service.md) passam a apontar para esta RFC na revisão da F5. O [`convencoes.md`](../../contratos/convencoes.md) ganhou a 6ª tabela (`execucao-tempos`).

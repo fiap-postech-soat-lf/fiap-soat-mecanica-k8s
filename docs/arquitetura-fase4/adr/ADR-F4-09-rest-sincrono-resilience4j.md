@@ -1,16 +1,16 @@
 # ADR-F4-09: REST síncrono entre serviços, com timeout, retry e repasse do JWT
 
 - **Status:** Aceito
-- **Data:** 2026-11-05
-- **Escopo:** OS (cliente do Identity) e, na F5, Execução (cliente do OS)
-- **Implementação:** `fiap-soat-mecanica-os` (`adapters/out/rest/identity/`: `IdentityClient`, `IdentityClientConfig`, `RepasseAutorizacaoInterceptor`); `RestClientConfig` do esqueleto (timeout)
+- **Data:** 2026-11-05. Revisada em 2026-11-06 (F5: o cliente do Execução)
+- **Escopo:** OS (cliente do Identity) e Execução (cliente do OS, F5)
+- **Implementação:** `fiap-soat-mecanica-os` (`adapters/out/rest/identity/`: `IdentityClient`, `IdentityClientConfig`, `RepasseAutorizacaoInterceptor`); `fiap-soat-mecanica-execucao` (`adapters/out/rest/os/`: `OsCatalogoClient`, `OsCatalogoClientConfig`, `RepasseAutorizacaoInterceptor`, `ServicoResponse`); `RestClientConfig` do esqueleto (timeout)
 
 ## Contexto
 
 Quase tudo entre os serviços é assíncrono (Saga, ADR-F4-02). Duas consultas, porém, precisam de resposta na hora:
 
 - **OS → Identity:** ao abrir uma OS, é preciso saber se o veículo existe e está ativo, e qual é o cliente e a placa (`GET /veiculos/{id}`). Se falhar, a OS nem nasce.
-- **Execução → OS** (F5): o mecânico monta o diagnóstico com o catálogo de serviços (`GET /servicos/{id}`).
+- **Execução → OS** (F5): o mecânico monta o diagnóstico com o catálogo de serviços (`GET /servicos/{id}`). O Execução valida o serviço e guarda o nome na prestação.
 
 Era preciso decidir como autenticar essas chamadas e o que fazer quando o chamado está lento ou fora do ar.
 
@@ -19,7 +19,7 @@ Era preciso decidir como autenticar essas chamadas e o que fazer quando o chamad
 - **Só duas chamadas síncronas** (a de veículo e a de catálogo). Todo o resto é mensagem.
 - **Timeout de 2 s** (o `RestClientConfig` do esqueleto) e **retry programático** com `resilience4j-retry` (sem AOP): 3 tentativas, backoff exponencial de 200 ms × 2, **só** em erro de I/O, timeout ou 5xx. **Sem circuit breaker** (corte 3): com 2 chamadas e poucas réplicas, ele não traria ganho que justificasse o estado extra.
 - **Repasse do JWT (F3-a, F4-b):** o serviço chamado recebe o **mesmo token de quem chamou**. Não existe token de serviço. O `RepasseAutorizacaoInterceptor` (`ClientHttpRequestInterceptor`) copia o header `Authorization` da requisição em andamento (`RequestContextHolder`). Ele é aplicado **só** ao `RestClient` do `IdentityClient`, não ao `RestClientCustomizer` global, e **não entra no template**.
-- **Por que não global:** um interceptor global vazaria o token do usuário para qualquer destino de um `RestClient` (por exemplo, uma chamada externa no Billing). Fora do template, também não obriga a mexer nos 4 repositórios. Na F5, o Execução copia a classe (um arquivo e um teste).
+- **Por que não global:** um interceptor global vazaria o token do usuário para qualquer destino de um `RestClient` (por exemplo, uma chamada externa no Billing). Fora do template, também não obriga a mexer nos 4 repositórios. O Execução **copiou** a classe (um arquivo e um teste), como previsto.
 - **Mapeamento de erros** (a Saga não começa em nenhum deles, passo 1 da ADR-F4-02):
 
   | Resposta do Identity | Resposta do OS |
@@ -29,6 +29,13 @@ Era preciso decidir como autenticar essas chamadas e o que fazer quando o chamad
   | 401 ou 403 (sem retry) | **502** `INTEGRACAO_IDENTITY` |
 
   O 401/403 não deveria ocorrer, porque a chave pública é a mesma nos dois serviços. Se ocorrer, indica configuração errada, e repetir não resolve.
+- **Cliente do Execução (F5-o):** o `OsCatalogoClient` repete o retry programático do `IdentityClient` (3 tentativas, 200 ms × 2, só em I/O, timeout ou 5xx). Ele guarda em cache (Caffeine, 5 min) **só as respostas 200**, então um erro nunca fica em cache. É chamado apenas no `POST /execucoes/{osId}/prestacoes`, sempre dentro de uma requisição do mecânico, e **nunca** a partir de um handler de mensagem (que não teria token para repassar). O catálogo do OS não tem preço, e por isso o preço da mão de obra vem do mecânico.
+
+  | Resposta do OS | Resposta do Execução |
+  |---|---|
+  | 404, ou serviço inativo | **422** `SERVICO_INVALIDO` |
+  | Retries esgotados (I/O, timeout ou 5xx) | **503** `OS_INDISPONIVEL` |
+  | 401 ou 403 (sem retry) | **502** `INTEGRACAO_OS` |
 - **Perfis aceitos pelo chamado:** `GET /veiculos/{id}` aceita ATENDENTE ou MECANICO (os cargos que abrem OS); `GET /servicos/{id}` aceita MECANICO. A tabela está em `docs/contratos/rotas.md`.
 - A URL base do Identity é o DNS do cluster (`http://mecanica-identity.mecanica.svc.cluster.local:8080`), sem passar pelo API Gateway.
 - O `X-Correlation-Id` acompanha a chamada (`CorrelationIdInterceptor`).
@@ -53,4 +60,6 @@ Era preciso decidir como autenticar essas chamadas e o que fazer quando o chamad
 **Negativas / riscos**
 - O pior caso de uma abertura é de ≈ 6,6 s (3 tentativas de 2 s mais os backoffs). Aceitável para uma abertura de OS, mas inadequado para um endpoint de alta frequência.
 - Se o Identity cair, nenhuma OS nova abre (não há cache). É o comportamento escolhido: sem veículo validado, a OS não existe.
-- O repasse só funciona dentro de uma requisição HTTP. Uma chamada feita por um handler de mensagem não tem token para repassar; hoje não há chamada assim.
+- O repasse só funciona dentro de uma requisição HTTP. Uma chamada feita por um handler de mensagem não tem token para repassar; as duas chamadas implementadas (Identity e catálogo do OS) partem de rotas REST, e a regra continua valendo para as próximas.
+- Se o OS cair, o mecânico não inclui prestações novas (503), mas as demais rotas do Execução e os handlers da Saga continuam funcionando, porque não dependem do catálogo.
+- O cache de 5 min pode mostrar o nome antigo de um serviço renomeado, ou aceitar por até 5 min um serviço recém-inativado. É aceito: a prestação guarda o nome do momento da inclusão.

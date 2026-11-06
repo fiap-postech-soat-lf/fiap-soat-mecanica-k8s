@@ -35,7 +35,7 @@ Documentos deste diretório:
 | [`IniciarExecucao`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-os/blob/main/docs/contratos/IniciarExecucao.v1.schema.json) | comando | os → execucao | `SQS mecanica-execucao-comandos` |
 | [`SolicitarPagamento`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-os/blob/main/docs/contratos/SolicitarPagamento.v1.schema.json) | comando | os → billing | `SQS mecanica-billing-comandos` |
 | [`SituacaoOrdemServicoAlterada`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-os/blob/main/docs/contratos/SituacaoOrdemServicoAlterada.v1.schema.json) | evento | os → identity | `SNS mecanica-os-eventos` |
-| [`OrdemServicoCancelada`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-os/blob/main/docs/contratos/OrdemServicoCancelada.v1.schema.json) | evento | os → identity | `SNS mecanica-os-eventos` |
+| [`OrdemServicoCancelada`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-os/blob/main/docs/contratos/OrdemServicoCancelada.v1.schema.json) | evento | os → identity e execucao | `SNS mecanica-os-eventos` (o Execução recebe pela fila `mecanica-execucao-os-eventos`, assinatura filtrada por `type`) |
 | [`DiagnosticoAberto`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-execucao/blob/main/docs/contratos/DiagnosticoAberto.v1.schema.json) | evento | execucao → os | `SNS mecanica-execucao-eventos` |
 | [`DiagnosticoConcluido`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-execucao/blob/main/docs/contratos/DiagnosticoConcluido.v1.schema.json) | evento | execucao → os | `SNS mecanica-execucao-eventos` |
 | [`PecasReservadas`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-execucao/blob/main/docs/contratos/PecasReservadas.v1.schema.json) | evento | execucao → os | `SNS mecanica-execucao-eventos` |
@@ -52,7 +52,7 @@ Documentos deste diretório:
 | [`PagamentoConfirmado`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-billing/blob/main/docs/contratos/PagamentoConfirmado.v1.schema.json) | evento | billing → os | `SNS mecanica-billing-eventos` |
 | [`PagamentoRecusado`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-billing/blob/main/docs/contratos/PagamentoRecusado.v1.schema.json) | evento | billing → os | `SNS mecanica-billing-eventos` |
 
-Os eventos de `mecanica-os-eventos` também vão para os logs do Datadog. O Identity consome `SituacaoOrdemServicoAlterada` e `OrdemServicoCancelada` para notificar o cliente.
+Os eventos de `mecanica-os-eventos` também vão para os logs do Datadog. O Identity consome `SituacaoOrdemServicoAlterada` e `OrdemServicoCancelada` para notificar o cliente. O Execução consome só `OrdemServicoCancelada` (a ordem sai da fila do mecânico, F5-b).
 
 ## 2. Convenções gerais
 
@@ -99,13 +99,15 @@ No container (EKS) todos usam a porta **8080**.
 | SQS (+ `-dlq`) | `mecanica-billing-comandos` | billing |
 | SQS (+ `-dlq`) | `mecanica-os-saga-respostas` | os |
 | SQS (+ `-dlq`) | `mecanica-identity-notificacoes` | identity |
+| SQS (+ `-dlq`) | `mecanica-execucao-os-eventos` | execucao (F5-b) |
 | Assinatura (raw) | `execucao-eventos` → `os-saga-respostas` | os |
 | Assinatura (raw) | `billing-eventos` → `os-saga-respostas` | os |
 | Assinatura (raw) | `os-eventos` → `identity-notificacoes` | **os** (exceção à regra "o consumidor é dono", F4-a; ADR-F4-03). O Identity só cria a fila e a queue policy |
+| Assinatura (raw, filtrada) | `os-eventos` → `execucao-os-eventos`, com `filter_policy = {type = ["OrdemServicoCancelada"]}` | **os** (segunda exceção, F5-b; ADR-F4-03). O Execução só cria a fila e a queue policy, com o ARN do tópico montado pelo nome |
 | ECR | `mecanica-<svc>` | cada serviço |
 | RDS | `mecanica-<svc>-db` (identity, os, billing) | cada serviço via módulo `-db@v1` |
 | Secrets Manager | `mecanica-<svc>-db`, `mecanica-identity-jwt`, `mercadopago-access-token`, `mercadopago-webhook-secret` | cada serviço |
-| DynamoDB | `execucao-ordens`, `execucao-pecas`, `execucao-reservas`, `execucao-outbox`, `execucao-idempotencia` | execucao (modelagem na RFC-F4-02, F5) |
+| DynamoDB (on-demand) | `execucao-ordens` (GSI esparso `fila`), `execucao-pecas`, `execucao-reservas`, `execucao-outbox` (GSI esparso `pendentes`, TTL), `execucao-idempotencia` (TTL), `execucao-tempos` | execucao (modelagem na RFC-F4-02) |
 | SSM | `/mecanica/<repo-curto>/<chave>` (ex.: `/mecanica/k8s/cluster-name`, `/mecanica/k8s/nlb-dns`, `/mecanica/os/os-eventos-topic-arn`, `/mecanica/auth/api-url`); lista dos parâmetros na seção 2.7 | quem cria o recurso |
 
 Todas as filas são padrão (não FIFO), com `visibility_timeout_seconds = 30`, `message_retention_seconds = 345600` (4 dias) e redrive para a DLQ com `maxReceiveCount = 5`.
@@ -130,7 +132,7 @@ Todas as filas são padrão (não FIFO), com `visibility_timeout_seconds = 30`, 
 ### 2.7 Parâmetros SSM (ADR-F4-14)
 Todos `String` (ou `StringList`), lidos com `insecure_value` nos data sources para não virarem valores sensíveis no plano. Só a chave pública é publicada; nenhum segredo vai para o SSM.
 
-Os parâmetros de outro serviço (Identity, Execução e Billing, lidos pelo OS) são lidos com `data "aws_ssm_parameter"` **direto**, não condicional. Na ordem B4 o dono sempre aplica antes, e a falta de um parâmetro é um erro (`ParameterNotFound` no `plan`), melhor do que subir uma Saga sem destino.
+Os parâmetros de outro serviço (Identity, Execução e Billing, lidos pelo OS; na F5, o OS lê três do Execução) são lidos com `data "aws_ssm_parameter"` **direto**, não condicional. Na ordem B4 o dono sempre aplica antes, e a falta de um parâmetro é um erro (`ParameterNotFound` no `plan`), melhor do que subir uma Saga sem destino.
 
 | Parâmetro | Tipo | Dono | Consumidor |
 |---|---|---|---|
@@ -142,7 +144,8 @@ Os parâmetros de outro serviço (Identity, Execução e Billing, lidos pelo OS)
 | `/mecanica/os/os-eventos-topic-arn` | String | os | Não é mais lido pelo Identity (F4-a). Continua publicado para os scripts e a F8 |
 | `/mecanica/identity/notificacoes-queue-arn` | String | identity | `infra/` do OS (assinatura `os-eventos → identity-notificacoes`, F4-a) |
 | `/mecanica/execucao/execucao-eventos-topic-arn` | String | execucao | `infra/` do OS (assinatura e policy da `os-saga-respostas`) |
-| `/mecanica/execucao/execucao-comandos-queue-url` | String | execucao | `infra/` do OS (`MESSAGING_DESTINO_EXECUCAO_COMANDOS`); `demo-saga-os.sh` |
+| `/mecanica/execucao/execucao-comandos-queue-url` | String | execucao | `infra/` do OS (`MESSAGING_DESTINO_EXECUCAO_COMANDOS`) |
+| `/mecanica/execucao/os-eventos-queue-arn` | String | execucao | `infra/` do OS (assinatura filtrada `os-eventos → execucao-os-eventos`, F5-b) |
 | `/mecanica/billing/billing-eventos-topic-arn` | String | billing | `infra/` do OS |
 | `/mecanica/billing/billing-comandos-queue-url` | String | billing | `infra/` do OS (`MESSAGING_DESTINO_BILLING_COMANDOS`) |
 | `/mecanica/identity/jwt-secret-arn` | String | identity | `scripts/smoke-borda.sh` (assina o token de teste) |
@@ -153,9 +156,9 @@ Os parâmetros de outro serviço (Identity, Execução e Billing, lidos pelo OS)
 ```
 cluster.yml (-k8s)
   └─ identity     RDS, ECR, par JWT, fila de notificações → SSM jwt-public-key, notificacoes-queue-arn
-      └─ execucao ECR, tópico de eventos, fila de comandos → SSM (lê jwt-public-key)
+      └─ execucao ECR, 6 tabelas DynamoDB, tópico de eventos, filas de comandos e os-eventos → SSM (lê jwt-public-key)
           └─ billing  ECR, RDS, tópico de eventos, fila de comandos → SSM (lê jwt-public-key)
-              └─ os   RDS, ECR, tópico os-eventos, fila os-saga-respostas, 3 assinaturas (lê tudo acima)
+              └─ os   RDS, ECR, tópico os-eventos, fila os-saga-respostas, 4 assinaturas (lê tudo acima)
                   └─ -auth   API GW + authorizer (lê nlb-dns e jwt-public-key)
                       └─ smoke-borda.sh
 ```
