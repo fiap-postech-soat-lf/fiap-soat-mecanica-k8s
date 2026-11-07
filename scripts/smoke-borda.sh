@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke da borda: verificacoes 5-21 (F2 + CP1 + CP2 + F5). API Gateway + Lambda Authorizer + NLB +
+# Smoke da borda: verificacoes 5-24 (F2 + CP1 + CP2 + F5 + F6). API Gateway + Lambda Authorizer + NLB +
 # Traefik + Identity, incluindo os logins reais do Identity (10-14), a borda ate o OS, o Execucao
-# e o Billing (15-18) e as rotas de pecas e da fila do Execucao (19-21). Imprime PASS/FAIL.
+# e o Billing (15-18) as rotas de pecas e da fila do Execucao (19-21) e as do Billing (22-24). Imprime PASS/FAIL.
 #
 # Uso: scripts/smoke-borda.sh
 # Le do SSM /mecanica/auth/api-url, /mecanica/k8s/nlb-dns e /mecanica/identity/jwt-secret-arn.
@@ -241,6 +241,34 @@ if [[ "$status" == 403 ]] && jq -e '.status == 403 and has("erro")' "$TMP/s21.co
   pass 21 "GET /pecas com token de mecanico -> 403 do Execucao" "HTTP 403"
 else
   fail 21 "GET /pecas com token de mecanico -> 403 do Execucao" "obtido $status: $(head -c 200 "$TMP/s21.corpo")"
+fi
+
+# 22-24: as rotas do Billing da F6. So leitura: nada e gravado.
+UUID_ALEATORIO=$(cat /proc/sys/kernel/random/uuid 2> /dev/null || uuidgen | tr '[:upper:]' '[:lower:]')
+
+# 22. O Billing aceita o token do cliente e nao acha orcamento: o 404 vem do Billing (ErrorResponse).
+status=$(requisitar s22 "$API/orcamentos/por-os/$UUID_ALEATORIO" -H "Authorization: Bearer $TOKEN_CLIENTE")
+if [[ "$status" == 404 ]] && jq -e '.status == 404 and has("erro")' "$TMP/s22.corpo" > /dev/null 2>&1; then
+  pass 22 "GET /orcamentos/por-os/{uuid} com token de cliente -> 404 do Billing" "HTTP 404"
+else
+  fail 22 "GET /orcamentos/por-os/{uuid} com token de cliente -> 404 do Billing" "obtido $status: $(head -c 200 "$TMP/s22.corpo")"
+fi
+
+# 23. Mecanico nao acessa o Billing: o 403 vem do Billing (ErrorResponse), e nao do API Gateway.
+status=$(requisitar s23 "$API/orcamentos/por-os/$UUID_ALEATORIO" -H "Authorization: Bearer $TOKEN_MECANICO")
+if [[ "$status" == 403 ]] && jq -e '.status == 403 and has("erro")' "$TMP/s23.corpo" > /dev/null 2>&1; then
+  pass 23 "GET /orcamentos/por-os/{uuid} com token de mecanico -> 403 do Billing" "HTTP 403"
+else
+  fail 23 "GET /orcamentos/por-os/{uuid} com token de mecanico -> 403 do Billing" "obtido $status: $(head -c 200 "$TMP/s23.corpo")"
+fi
+
+# 24. O webhook e publico (sem token), mas exige a assinatura: o 401 vem do Billing, com corpo vazio
+# (o do API Gateway traz JSON). Sem x-signature nada e gravado.
+status=$(post_json s24 "$API/webhooks/mercadopago?data.id=1&type=payment" '{}')
+if [[ "$status" == 401 && ! -s "$TMP/s24.corpo" ]]; then
+  pass 24 "POST /webhooks/mercadopago sem x-signature e sem token -> 401 do Billing" "HTTP 401"
+else
+  fail 24 "POST /webhooks/mercadopago sem x-signature e sem token -> 401 do Billing" "obtido $status: $(head -c 200 "$TMP/s24.corpo")"
 fi
 
 echo
