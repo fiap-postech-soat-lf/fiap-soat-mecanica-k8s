@@ -23,6 +23,6 @@ RFCs em [`../rfc/`](../rfc/):
 
 | RFC | Tema | Status |
 |---|---|---|
-| RFC-F4-01 | Mercado Pago | *TODO* (F6) |
+| [RFC-F4-01](../rfc/RFC-F4-01-mercado-pago.md) | Mercado Pago: Checkout Pro com cartões APRO e OTHE, webhook na aplicação dona do token, validação do `x-signature`, status consultado e idempotência por `(payment.id, status)` | Proposto (F6) |
 | [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md) | Modelagem DynamoDB do Execução: 6 tabelas, GSIs esparsos `fila` e `pendentes`, estoque materializado e reserva atômica | Aprovado (F5) |
 | [RFC-F4-03](../rfc/RFC-F4-03-capacidade-e-custo.md) | Capacidade e custo do ambiente no Academy (números da janela do D7) | Aprovado |
