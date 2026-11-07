@@ -1,7 +1,7 @@
 # ADR-F4-04: Transactional Outbox e consumidor idempotente
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i) e em 2026-11-06 (variante DynamoDB, F5-f a F5-i)
+- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i) em 2026-11-06 (variante DynamoDB, F5-f a F5-i) e em 2026-11-07 (idempotência por chave de negócio em SQL e do webhook, F6-c e F6-i)
 - **Escopo:** transversal (Identity, OS e Billing na versão SQL; Execução na versão DynamoDB, F5; ver a RFC-F4-02)
 - **Implementação:** `templates/servico-base/.../adapters/out/persistence/mensageria/` (`OutboxSqlAdapter`, `OutboxPublisher`, `ProcessadorMensagemSql`) e `V1__mensageria.sql`; no Execução, `adapters/out/dynamo/` (`TransacaoDynamo`) e `adapters/out/dynamo/mensageria/` (`OutboxDynamoAdapter`, `OutboxPublisherDynamo`, `ProcessadorMensagemDynamo`, `IdempotenciaDynamo`)
 
@@ -45,6 +45,10 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 - **Publicador (F5-i):** o `SKIP LOCKED` não existe no DynamoDB. A `execucao-outbox` tem um GSI esparso `pendentes` (atributo `pendente` só enquanto a linha não foi publicada), e o `OutboxPublisherDynamo` (1 s) reserva cada linha com um *lease* condicional (`reservadoAte`, 30 s) antes de publicar. Duas réplicas nunca publicam a mesma linha ao mesmo tempo. Se o pod cai entre publicar e remover `pendente`, o lease vence e a linha sai de novo; a duplicata é absorvida pela idempotência do OS (`mensagem_processada`). As publicadas ganham TTL de 1 dia.
 - **Reenvio da Saga (F5-h, requisito da F4-h):** o item da ordem guarda `comandosAtendidos[tipo] = {ids, resposta}`. Como o OS atualiza o `ultimoComando` a cada reenvio, o 2º reenvio traz como `causationId` o 1º reenvio, e não o original. Por isso o Execução guarda uma **cadeia de ids**: um comando cujo `messageId` ou `causationId` está na cadeia é um reenvio, e a resposta guardada é reemitida num envelope novo (`causationId` = o `messageId` recebido), com o id acrescentado à cadeia. Um comando fora da cadeia é uma nova rodada e substitui a entrada. Um `LiberarReservaPecas` sem reserva ativa responde `ReservaPecasLiberada` mesmo assim, porque o OS manda esse comando "por garantia" no timeout da reserva e espera a resposta.
 
+**Billing (SQL, F6-c):** a mesma regra da F5-h, na tabela `comando_atendido` (PK `os_id` + `tipo`, `ids JSONB`, `resposta JSONB`). Antes de aplicar um `GerarOrcamento` ou um `SolicitarPagamento`, o `ParticipanteSaga` consulta a linha: se o `messageId` ou o `causationId` está na cadeia, reemite a resposta guardada num envelope novo (`causationId` = o `messageId` recebido), acrescenta o id à cadeia e **não** refaz o efeito (nem a preferência no Mercado Pago). Um comando fora da cadeia é uma nova rodada e substitui a linha. Tudo na transação do `ProcessadorMensagemSql`. O `OrcamentoFalhou` também fica guardado, para o reenvio reemitir a mesma falha. O `CancelarOrcamento` não tem resposta, então é idempotente pelo estado do orçamento.
+
+**Webhook do Mercado Pago (F6-i):** o Mercado Pago notifica o mesmo pagamento várias vezes (`payment.created`, `payment.updated`) e repete quando não recebe 200. A notificação com assinatura válida é gravada em `webhook_eventos` (200 na hora), e um scheduler (2 s, `FOR UPDATE SKIP LOCKED`) consulta o status no Mercado Pago e aplica o resultado. A chave `(mp_payment_id, status)` é a PK de `mp_status_aplicado`, inserida **na mesma transação** do efeito e da outbox: uma mudança de status vale uma vez, e a repetição conclui sem efeito. É uma segunda camada de idempotência, por chave externa, porque o `messageId` não existe numa notificação HTTP.
+
 ## Alternativas consideradas
 
 | Alternativa | Motivo da rejeição |
@@ -53,6 +57,7 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 | CDC com Debezium lendo o WAL | Kafka Connect e mais infraestrutura no Academy para resolver o que uma tabela e um `@Scheduled` resolvem |
 | SQS FIFO com deduplicação | A janela de 5 min não cobre reentregas mais tardias, e não resolve o *dual write* |
 | Reenviar o comando com o mesmo `messageId` | O participante já o deduplicou, e uma resposta perdida nunca seria refeita |
+| Idempotência do webhook só por `payment.id` | Um mesmo pagamento passa por mais de um status (`pending` → `approved`), e cada mudança deve valer uma vez |
 | Idempotência "natural" de cada handler | Depende de cada caso de uso acertar; o registro por `messageId` dá a garantia uma vez, no esqueleto |
 
 ## Consequências

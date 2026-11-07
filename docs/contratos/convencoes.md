@@ -106,7 +106,9 @@ No container (EKS) todos usam a porta **8080**.
 | Assinatura (raw, filtrada) | `os-eventos` → `execucao-os-eventos`, com `filter_policy = {type = ["OrdemServicoCancelada"]}` | **os** (segunda exceção, F5-b; ADR-F4-03). O Execução só cria a fila e a queue policy, com o ARN do tópico montado pelo nome |
 | ECR | `mecanica-<svc>` | cada serviço |
 | RDS | `mecanica-<svc>-db` (identity, os, billing) | cada serviço via módulo `-db@v1` |
-| Secrets Manager | `mecanica-<svc>-db`, `mecanica-identity-jwt`, `mercadopago-access-token`, `mercadopago-webhook-secret` | cada serviço |
+| Secrets Manager | `mecanica-<svc>-db`, `mecanica-identity-jwt` | cada serviço |
+| Secrets Manager | `mercadopago-access-token`, `mercadopago-webhook-secret` (`recovery_window_in_days = 0`; chegam ao pod como `MP_ACCESS_TOKEN` e `MP_WEBHOOK_SECRET` pelo `app_secrets`, F6-m) | billing (só o Billing consome) |
+| Webhook (fora do Terraform) | `callback` e `callback_sandbox` (tópico `payment`) da aplicação `mecanica-fase4` no Mercado Pago, apontando para `<api-url>/webhooks/mercadopago` | billing: regravado a cada janela com pagamento pelo MCP `save_webhook` ou pelo painel, porque o API Gateway é recriado a cada subida (F6-j) |
 | DynamoDB (on-demand) | `execucao-ordens` (GSI esparso `fila`), `execucao-pecas`, `execucao-reservas`, `execucao-outbox` (GSI esparso `pendentes`, TTL), `execucao-idempotencia` (TTL), `execucao-tempos` | execucao (modelagem na RFC-F4-02) |
 | SSM | `/mecanica/<repo-curto>/<chave>` (ex.: `/mecanica/k8s/cluster-name`, `/mecanica/k8s/nlb-dns`, `/mecanica/os/os-eventos-topic-arn`, `/mecanica/auth/api-url`); lista dos parâmetros na seção 2.7 | quem cria o recurso |
 
