@@ -1,7 +1,7 @@
 # RFC-F4-03: Capacidade e custo do ambiente no AWS Academy
 
 - **Status:** Aprovado
-- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00)
+- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) e em 2026-11-07 com o da janela da F5 (F6, T00 e T08)
 - **Escopo:** `-k8s` (cluster e scripts do ambiente) e o planejamento das janelas F3–F9
 - **Base:** RFC-001 do `fiap-soat-mecanica-api-k8s` do grupo (EKS no Learner Lab), que continua valendo para as restrições do Academy
 
@@ -93,25 +93,28 @@ API Gateway, Lambda, Secrets Manager, SSM, ECR e CloudWatch custam centavos por 
 
 A taxa conjunta do D8 e do CP2 é de ≈ **US$ 0,29/h** (US$ 0,80 ÷ ≈ 2,8 h), com ± US$ 0,05 no total por causa do arredondamento do painel. É o valor a usar nas próximas janelas. O CP2, com 3 RDS, custou menos do que os ≈ US$ 0,40/h estimados pela tabela de preços; o que mais pesa na conta é o tempo ligado.
 
-**Janela da F5 (D9), estimativa:** o ambiente é o do CP2 mais as 6 tabelas DynamoDB on-demand, que custam centavos com o tráfego da demo. Com ≈ 1 h 50 ligado, a US$ 0,29/h: **≈ US$ 0,55** (US$ 0,50–0,60). O valor medido entra aqui depois da janela, na virada do dia.
+**Janela da F5 (D9, medida em 2026-11-07):** o ambiente é o do CP2 (3 RDS) mais as 6 tabelas DynamoDB on-demand, que custam centavos com o tráfego da demo. Ficou ligado de 22:28:44 a 00:03:43 UTC, **≈ 1 h 35** (≈ 1,58 h). O painel do Learner Lab, lido depois da virada do dia, mostrou "Used US$ 1.7 of US$ 50", ou seja, **saldo de US$ 48,30**. A queda de US$ 0,40 desde os US$ 48,70 anteriores é o custo da janela: **US$ 0,40** (≈ **US$ 0,25/h**), abaixo da estimativa de ≈ US$ 0,55.
+
+Com a F5, a taxa conjunta do D8, do CP2 e da F5 é de ≈ **US$ 0,27/h** (US$ 1,20 ÷ ≈ 4,4 h), com ± US$ 0,05 por causa do arredondamento do painel. É o valor a usar daqui em diante. O **total do projeto até a F5 é US$ 1,70** (saldo US$ 48,30).
+
+**Janela da F6 (D11), estimativa:** o mesmo ambiente da F5, mais 2 secrets (centavos). Com ≈ 2 h ligado (o roteiro é mais longo por causa dos três pagamentos manuais), a US$ 0,27/h: **≈ US$ 0,55** (US$ 0,50–0,60). O projeto fica em ≈ US$ 2,25 até o fim da F6. O valor medido só sai no D12, porque o painel atualiza na virada do dia.
 
 ## Decisão
 
 - **Ambiente efêmero por janela:** subir com `subir-ambiente.sh` e destruir com `destruir-ambiente.sh` ao fim de **toda** janela, sem exceção. O ambiente não fica ligado entre dias.
 - **Node group com max 3:** o corte 1 (HPA sem demonstração) dispensa a folga para escalar. Se a projeção de capacidade passar de ~80% do alocável, o próximo passo é subir o desired para 4, e não trocar o tipo de instância.
-- **Orçamento das janelas restantes** (recalibrado em 2026-11-06 para ≈ US$ 0,29/h medidos; as horas das janelas futuras são estimativas, pelo calendário da F5-a):
+- **Orçamento das janelas restantes** (recalibrado em 2026-11-07 para ≈ US$ 0,27/h medidos; as horas das janelas futuras são estimativas, pelo calendário de cada fase):
 
   | Janela | Horas ligadas | US$/h | US$ |
   |---|---|---|---|
-  | D7, D8 e CP2 (medido) | ≈ 4,9 | 0,24–0,29 | 1,30 |
-  | D9 (F5) | ~1,9 | 0,29 | ~0,55 |
-  | D10–D11 (F6: Mercado Pago, CP3) | ~6 | 0,29 | ~1,75 |
-  | D12 (F7: E2E) | ~5 | 0,29 | ~1,45 |
-  | D13 (F8: caos, dashboards) | ~6 | 0,29 | ~1,75 |
-  | D14 (F9: gravação) | ~4 | 0,29 | ~1,15 |
-  | **Total** | **~28** | | **≈ US$ 8** |
+  | D7, D8, CP2 e D9 (F5) (medido) | ≈ 6,5 | 0,24–0,29 | 1,70 |
+  | D11 (F6: Mercado Pago, CP3) | ~2 | 0,27 | ~0,55 |
+  | D12 (F7: E2E) | ~5 | 0,27 | ~1,35 |
+  | D13 (F8: caos, dashboards) | ~6 | 0,27 | ~1,60 |
+  | D14 (F9: gravação) | ~4 | 0,27 | ~1,10 |
+  | **Total** | **~23,5** | | **≈ US$ 6,30** |
 
-  Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 15, menos de um terço do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 7 por dia a US$ 0,29/h), e não o custo das janelas.
+  Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 12, menos de um quarto do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 6,50 por dia a US$ 0,27/h), e não o custo das janelas.
 
 ## Alternativas consideradas
 

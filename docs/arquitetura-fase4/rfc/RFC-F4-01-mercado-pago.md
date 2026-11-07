@@ -1,7 +1,7 @@
 # RFC-F4-01: Integração com o Mercado Pago (Checkout Pro)
 
-- **Status:** Proposto (F6, 2026-11-07)
-- **Data:** 2026-11-07, escrita antes de qualquer código do Mercado Pago no Billing
+- **Status:** Aprovado (F6, 2026-11-07). A prova no EKS (APRO e OTHE) é registrada na 11.2 da F6
+- **Data:** 2026-11-07, escrita antes de qualquer código do Mercado Pago no Billing. Revisada em 2026-11-07 com a implementação (T04 e T06)
 - **Escopo:** `fiap-soat-mecanica-billing`: `adapters/out/rest/mercadopago/**`, `adapters/in/web/webhook/**`, `infra/` (secrets) e a configuração do webhook na aplicação `mecanica-fase4`
 - **Base:** [ADR-F4-01](../adr/ADR-F4-01-decomposicao-em-4-servicos.md) (o Billing é dono de orçamento e pagamento), [ADR-F4-02](../adr/ADR-F4-02-saga-orquestrada.md) (cobrança só para a frente depois do pivô), [ADR-F4-04](../adr/ADR-F4-04-outbox-consumidor-idempotente.md) (outbox e idempotência) e [ADR-F4-09](../adr/ADR-F4-09-rest-sincrono-resilience4j.md) (REST síncrono com retry)
 
@@ -105,4 +105,14 @@ Sem token, o Billing sobe, loga `mercadopago_token_ausente` e as cobranças falh
 - O Billing ganha as tabelas `webhook_eventos` e `mp_status_aplicado` (migration V4) e o par `MercadoPagoClient` / `GatewayPagamentoPort`, trocável por um fake nos testes.
 - A [ADR-F4-04](../adr/ADR-F4-04-outbox-consumidor-idempotente.md) ganha, na revisão da F6, a idempotência por chave de negócio em SQL (`comando_atendido`) e a do webhook por `(payment.id, status)`. A [ADR-F4-02](../adr/ADR-F4-02-saga-orquestrada.md) passa a registrar o TTL do orçamento no Billing e a cobrança só para a frente.
 - Toda janela que use pagamento inclui o passo de gravar a URL do webhook e conferir o segredo.
-- **Aceite:** as seções de orçamento, cobrança, webhook e `infra/` da F6 não contradizem esta RFC. A RFC passa a **Aprovado** no T08, com a seção "O que mudou na implementação" se houver diferenças.
+- **Aceite:** as seções de orçamento, cobrança, webhook e `infra/` da F6 não contradizem esta RFC. A RFC passou a **Aprovado** no T08, com a seção abaixo.
+
+## O que mudou na implementação
+
+Nenhuma decisão da RFC foi revertida. A implementação (PRs #7 e #9 do `-billing`) acrescentou três detalhes:
+
+| Detalhe | Por quê |
+|---|---|
+| O `RestClient` do Mercado Pago é fixado em **HTTP/1.1** | O cliente HTTP do JDK tenta o upgrade `h2c` em requisições sem TLS, e isso quebrava o `POST` contra o WireMock dos testes. Em produção a URL é `https`, então não muda nada |
+| O `type` e o `data.id` da notificação vêm do corpo **ou** da query, o que estiver preenchido (a query tem prioridade no `data.id`, e o corpo, no `type`) | O `data.id` da query é o que entra no manifesto da assinatura, e o `type` pode vir em qualquer um dos dois. Um corpo ilegível não derruba a validação: sem corpo, só a query vale |
+| O `motivo` do `PagamentoRecusado` cai para o próprio status (`rejected` ou `cancelled`) quando o `status_detail` vem vazio | O contrato exige o campo |

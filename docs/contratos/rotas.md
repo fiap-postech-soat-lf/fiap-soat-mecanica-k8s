@@ -79,6 +79,37 @@ Erros próprios do Execução (`ErrorResponse`):
 
 Saíram do monolito: `PATCH /prestacao-servico/{id}/...` e `/alocacao-pecas/...` (viraram as rotas aninhadas acima) e `tempo-medio` do controller da OS (agora `GET /execucoes/tempo-medio`).
 
+## Rotas e perfis do Billing
+
+O perfil é verificado pelo próprio Billing (`ROLE_<tipo>` e `ROLE_<cargo>` do JWT). O dono vem do `clienteId` do `GerarOrcamento`, guardado no orçamento e copiado para o pagamento. MECANICO e ALMOXARIFE não acessam o Billing (403).
+
+| Rota | Perfil |
+|---|---|
+| `GET /orcamentos/{id}` (itens, valores, `status`, `expiraEm`) | CLIENTE (dono) ou ATENDENTE |
+| `GET /orcamentos/por-os/{osId}` (o orçamento vivo ou, sem ele, o mais recente) | CLIENTE (dono) ou ATENDENTE |
+| `PATCH /orcamentos/{id}/aprovar` (→ 200 `APROVADO`; emite `OrcamentoAprovado`) | CLIENTE (dono) ou ATENDENTE (em nome do cliente) |
+| `PATCH /orcamentos/{id}/recusar` (`{motivo?}` → 200 `RECUSADO`; emite `OrcamentoRecusado`) | CLIENTE (dono) ou ATENDENTE (em nome do cliente) |
+| `GET /pagamentos/por-os/{osId}` (o pagamento vigente, com o `link`, e o histórico das cobranças) | ATENDENTE ou **CLIENTE (dono)** (F6-k) |
+| `POST /pagamentos/{osId}/nova-cobranca` (→ 201 com o novo vigente; só com o vigente `RECUSADO`) | ATENDENTE |
+| 🔓 `POST /webhooks/mercadopago` | público, validado por HMAC (`x-signature`) |
+| 🔓 `/actuator/health/**`, Swagger, `/error` | público |
+
+O CLIENTE lê o pagamento porque o link só existe no Billing: o `CobrancaCriada` vai para o OS, e o Identity notifica só a situação.
+
+Erros próprios do Billing (`ErrorResponse`, exceto o webhook):
+
+| Situação | Status | Código |
+|---|---|---|
+| CLIENTE em orçamento ou pagamento de outro cliente | 403 | `ORCAMENTO_DE_OUTRO_CLIENTE` |
+| Orçamento ou pagamento inexistente | 404 | recurso não encontrado |
+| Aprovar ou recusar fora de `GERADO`, ou depois de `expiraEm` (mesmo antes do scheduler rodar) | 422 | regra de negócio |
+| Nova cobrança sem pagamento vigente `RECUSADO` | 422 | regra de negócio |
+| Conflito de versão (aprovar × expirar, duas aprovações) | 409 | `CONFLITO_CONCORRENTE` (o cliente repete a operação) |
+| Mercado Pago fora do ar na nova cobrança (retries esgotados) | 502 | `MERCADOPAGO_INDISPONIVEL` |
+| Webhook com assinatura ausente ou inválida | 401 | corpo vazio (o Mercado Pago repete a notificação) |
+
+Saíram do monolito e viraram evento da Saga ou rota do Billing: `aprovar-orcamento` e `recusar-orcamento` da OS (agora `PATCH /orcamentos/{id}/aprovar` e `/recusar`, com checagem de dono) e `pagar` (webhook do Mercado Pago).
+
 ## Chamadas entre serviços
 
 Quando um serviço chama outro por REST, ele **repassa o JWT de quem chamou** (o header `Authorization` da requisição em andamento). Não existe token de serviço: o chamado valida o mesmo token e aplica o seu próprio perfil (F3-a).
