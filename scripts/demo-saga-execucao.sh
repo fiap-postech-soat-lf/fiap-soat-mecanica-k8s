@@ -11,17 +11,16 @@
 #   5. POST /execucoes/{osId}/prestacoes (mecanico) -> 201 com nomeServico do catalogo do OS (JWT repassado)
 #   6. POST /execucoes/{osId}/prestacoes/{id}/pecas (almoxarife), quantidade 2 -> 201
 #   7. PATCH /execucoes/{osId}/diagnostico/concluir (mecanico) -> 200 DIAGNOSTICO_CONCLUIDO
-#   8. a Saga chega a GERAR_ORCAMENTO, qtdDisponivel = D0 - 2 (reserva real) e o GerarOrcamento
-#      na billing-comandos tem valorTotal 159.80 (o Billing so consome na F6)
-#   9. PATCH /cancelar -> 200 CANCELADA; a Saga vai a COMPENSADA, qtdDisponivel volta a D0 e a ordem
-#      do Execucao fica CANCELADA e fora da fila
+#   8. a OS chega a AGUARDANDO_APROVACAO, qtdDisponivel = D0 - 2 (reserva real) e o Billing real
+#      guarda o orcamento GERADO com valorTotal 159.80 (GET /orcamentos/por-os/{osId}, F6-l)
+#   9. PATCH /cancelar -> 200 CANCELADA; a Saga vai a COMPENSADA, qtdDisponivel volta a D0, o
+#      orcamento fica CANCELADO e a ordem do Execucao fica CANCELADA e fora da fila
 #  10. uma segunda OS, cancelada em EM_DIAGNOSTICO: a ordem do Execucao fica CANCELADA pela assinatura
 #      filtrada do OrdemServicoCancelada (F5-b)
 #  11. as 3 DLQs vazias e nenhum mensagem_falhou no log do Execucao
 #
 # Uso: scripts/demo-saga-execucao.sh
-# Le do SSM /mecanica/auth/api-url e /mecanica/billing/billing-comandos-queue-url, usa as filas pelo
-# nome e kubectl (kubeconfig do cluster: aws eks update-kubeconfig --name <cluster>) para o log.
+# Le do SSM /mecanica/auth/api-url, usa as DLQs pelo nome e kubectl (kubeconfig do cluster: aws eks update-kubeconfig --name <cluster>) para o log.
 # Saida: 0 se tudo passar, 1 se algum passo falhar.
 # Variaveis: AWS_REGION (padrao us-east-1), NAMESPACE (padrao mecanica)
 set -euo pipefail
@@ -103,6 +102,10 @@ na_fila() { # na_fila <osId>: 0 se a ordem esta na fila de execucao
 disponivel() { # disponivel: qtdDisponivel da peca do seed (almoxarife)
   [[ "$(api "$TOKEN_ALMOXARIFE" GET "/pecas/$PECA_ID_SEED")" == 200 ]] && jq -er '.qtdDisponivel' "$TMP/resp.json"
 }
+status_orcamento() { # status_orcamento <osId>: status do orcamento da OS no Billing (atendente)
+  [[ "$(api "$TOKEN_ATENDENTE" GET "/orcamentos/por-os/$1")" == 200 ]] && jq -r '.status // empty' "$TMP/resp.json"
+}
+orcamento_tem() { [[ "$(status_orcamento "$1")" == "$2" ]]; } # orcamento_tem <osId> <status>
 disponivel_e() { [[ "$(disponivel)" == "$1" ]]; }
 
 abrir_os() { # abrir_os <descricao>: imprime o id da OS RECEBIDA
@@ -114,7 +117,6 @@ abrir_os() { # abrir_os <descricao>: imprime o id da OS RECEBIDA
 
 API=$(ssm /mecanica/auth/api-url)
 API="${API%/}"
-FILA_BILLING=$(ssm /mecanica/billing/billing-comandos-queue-url)
 echo "API: $API"
 echo
 
@@ -160,24 +162,16 @@ status=$(api "$TOKEN_MECANICO" PATCH "/execucoes/$OS_ID/diagnostico/concluir")
   || falhar 7 "PATCH /diagnostico/concluir: HTTP $status: $(resumo)"
 passo 7 "PATCH /diagnostico/concluir -> 200 DIAGNOSTICO_CONCLUIDO"
 
-# 8. A Saga reserva as pecas (ReservarPecas real) e pede o orcamento ao Billing.
-esperar 15 2 os_tem "$OS_ID" passoAtual GERAR_ORCAMENTO \
-  || falhar 8 "Saga da OS $OS_ID em '$(campo_os "$OS_ID" passoAtual || true)' (esperado GERAR_ORCAMENTO; confira a ReservaPecasRecusada no log do Execucao)"
+# 8. A Saga reserva as pecas (ReservarPecas real) e o Billing real gera o orcamento (F6-l).
+esperar 15 2 os_tem "$OS_ID" situacao AGUARDANDO_APROVACAO \
+  || falhar 8 "OS $OS_ID continua $(campo_os "$OS_ID" situacao || true) (esperado AGUARDANDO_APROVACAO; confira a ReservaPecasRecusada no log do Execucao e o consumidor do Billing)"
 esperar 5 2 disponivel_e "$((D0 - QUANTIDADE))" \
   || falhar 8 "qtdDisponivel $(disponivel || true), esperado $((D0 - QUANTIDADE)) (reserva real)"
-ORCAMENTO=""
-for _ in $(seq 1 10); do
-  aws sqs receive-message --queue-url "$FILA_BILLING" --visibility-timeout 0 \
-    --max-number-of-messages 10 --wait-time-seconds 3 --output json > "$TMP/billing.json"
-  ORCAMENTO=$(jq -c --arg os "$OS_ID" \
-    '[.Messages[]?.Body | fromjson | select(.type == "GerarOrcamento" and .osId == $os)] | first // empty' \
-    "$TMP/billing.json")
-  [[ -n "$ORCAMENTO" ]] && break
-done
-[[ -n "$ORCAMENTO" ]] || falhar 8 "GerarOrcamento da OS $OS_ID nao apareceu na billing-comandos"
-jq -e --argjson total "$VALOR_TOTAL_ESPERADO" '.payload.valorTotal == $total' <<< "$ORCAMENTO" > /dev/null \
-  || falhar 8 "GerarOrcamento com valorTotal $(jq -r .payload.valorTotal <<< "$ORCAMENTO"), esperado $VALOR_TOTAL_ESPERADO"
-passo 8 "Saga em GERAR_ORCAMENTO, qtdDisponivel = $((D0 - QUANTIDADE)), GerarOrcamento com valorTotal $VALOR_TOTAL_ESPERADO"
+esperar 10 2 orcamento_tem "$OS_ID" GERADO \
+  || falhar 8 "orcamento da OS $OS_ID: '$(status_orcamento "$OS_ID" || true)', esperado GERADO (confira a billing-comandos e a DLQ mecanica-billing-comandos-dlq)"
+jq -e --argjson total "$VALOR_TOTAL_ESPERADO" '.valorTotal == $total' "$TMP/resp.json" > /dev/null \
+  || falhar 8 "orcamento com valorTotal $(jq -r .valorTotal "$TMP/resp.json"), esperado $VALOR_TOTAL_ESPERADO"
+passo 8 "OS AGUARDANDO_APROVACAO, qtdDisponivel = $((D0 - QUANTIDADE)), orcamento GERADO com valorTotal $VALOR_TOTAL_ESPERADO"
 
 # 9. Cancelamento com reserva: a Saga compensa e o estoque volta (compensacao real).
 status=$(api "$TOKEN_ATENDENTE" PATCH "/ordem-servicos/$OS_ID/cancelar" '{"motivo":"demo da Saga com o Execucao"}')
@@ -186,9 +180,11 @@ status=$(api "$TOKEN_ATENDENTE" PATCH "/ordem-servicos/$OS_ID/cancelar" '{"motiv
 esperar 15 2 os_tem "$OS_ID" sagaStatus COMPENSADA \
   || falhar 9 "Saga esperada COMPENSADA, obtido '$(campo_os "$OS_ID" sagaStatus || true)'"
 esperar 5 2 disponivel_e "$D0" || falhar 9 "qtdDisponivel $(disponivel || true), esperado $D0 (compensacao real)"
+esperar 10 2 orcamento_tem "$OS_ID" CANCELADO \
+  || falhar 9 "orcamento da OS $OS_ID: '$(status_orcamento "$OS_ID" || true)', esperado CANCELADO (CancelarOrcamento da F4)"
 esperar 10 2 execucao_tem "$OS_ID" CANCELADA || falhar 9 "ordem $OS_ID no Execucao: '$(status_execucao "$OS_ID" || true)', esperado CANCELADA"
 if na_fila "$OS_ID"; then falhar 9 "a ordem cancelada continua em GET /execucoes/fila"; fi
-passo 9 "OS CANCELADA, Saga COMPENSADA, qtdDisponivel de volta a $D0, ordem CANCELADA e fora da fila"
+passo 9 "OS CANCELADA, Saga COMPENSADA, qtdDisponivel de volta a $D0, orcamento CANCELADO, ordem CANCELADA e fora da fila"
 
 # 10. Cancelamento sem reserva: so o OrdemServicoCancelada (assinatura filtrada) chega ao Execucao.
 OS_ID2=$(abrir_os "demo da Saga: cancelamento sem reserva (F5-b)") || falhar 10 "POST /ordem-servicos: $(resumo)"
