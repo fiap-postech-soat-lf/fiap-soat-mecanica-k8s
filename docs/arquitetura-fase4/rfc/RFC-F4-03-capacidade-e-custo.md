@@ -1,7 +1,7 @@
 # RFC-F4-03: Capacidade e custo do ambiente no AWS Academy
 
 - **Status:** Aprovado
-- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) e em 2026-11-07 com o da janela da F5 (F6, T00 e T08)
+- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) em 2026-11-07 com o da janela da F5 (F6, T00 e T08) e em 2026-11-08 com o da janela da F6 (F7, T00 e T04)
 - **Escopo:** `-k8s` (cluster e scripts do ambiente) e o planejamento das janelas F3–F9
 - **Base:** RFC-001 do `fiap-soat-mecanica-api-k8s` do grupo (EKS no Learner Lab), que continua valendo para as restrições do Academy
 
@@ -97,24 +97,27 @@ A taxa conjunta do D8 e do CP2 é de ≈ **US$ 0,29/h** (US$ 0,80 ÷ ≈ 2,8 h),
 
 Com a F5, a taxa conjunta do D8, do CP2 e da F5 é de ≈ **US$ 0,27/h** (US$ 1,20 ÷ ≈ 4,4 h), com ± US$ 0,05 por causa do arredondamento do painel. É o valor a usar daqui em diante. O **total do projeto até a F5 é US$ 1,70** (saldo US$ 48,30).
 
-**Janela da F6 (D11), estimativa:** o mesmo ambiente da F5, mais 2 secrets (centavos). Com ≈ 2 h ligado (o roteiro é mais longo por causa dos três pagamentos manuais), a US$ 0,27/h: **≈ US$ 0,55** (US$ 0,50–0,60). O projeto fica em ≈ US$ 2,25 até o fim da F6. O valor medido só sai no D12, porque o painel atualiza na virada do dia.
+**Janela da F6 (D10, medida em 2026-11-08):** o mesmo ambiente da F5, mais 2 secrets (centavos). Ficou ligado de 18:24 a 20:32 UTC, **≈ 2 h 08** (≈ 2,13 h): `subir-ambiente.sh` em 54m54s e `destruir-ambiente.sh` em 20m53s. O painel, lido depois da virada do dia, mostrou "Used US$ 2.4 of US$ 50", ou seja, **saldo de US$ 47,60**. A queda de US$ 0,70 (± US$ 0,05) desde os US$ 48,30 anteriores é o custo da janela: **US$ 0,70** (≈ **US$ 0,33/h**), acima da estimativa de ≈ US$ 0,55 (≈ US$ 0,57 pelas horas reais). O painel arredonda a uma casa decimal, então a taxa desta janela tem ± US$ 0,02/h de incerteza; a conta acumulada é mais confiável.
+
+A taxa acumulada passa a ser de ≈ **US$ 0,28/h** (US$ 2,40 ÷ ≈ 8,6 h). É o valor a usar daqui em diante. O **total do projeto até a F6 é US$ 2,40** (saldo US$ 47,60). A tabela de preços do início desta RFC (≈ US$ 0,40/h com 3 RDS) continua sendo o teto, não o valor esperado.
+
+**Janela da F7 (D11, 2026-11-08):** o mesmo ambiente da F6. Ficou ligado de ≈ 16:32 a 18:58 UTC, **≈ 2 h 26** (≈ 2,4 h): `subir-ambiente.sh` em 55m07s, E2E no CD do OS (36 de 36 checks), regressão do Execução, os três caos (Execução fora, esgotamento e mensagem envenenada), o ensaio do pagamento e `destruir-ambiente.sh` em 22m30s (sem órfãos). A estimativa pela taxa acumulada de US$ 0,28/h é de **≈ US$ 0,70** (US$ 0,65–0,80), abaixo dos US$ 0,85–1,00 previstos, porque o pagamento manual foi mais rápido que o orçado. **O valor medido só sai no D12**, porque o painel atualiza na virada do dia; ele entra aqui na F8 (T00). O projeto fica em ≈ US$ 3,10 até o fim da F7.
 
 ## Decisão
 
 - **Ambiente efêmero por janela:** subir com `subir-ambiente.sh` e destruir com `destruir-ambiente.sh` ao fim de **toda** janela, sem exceção. O ambiente não fica ligado entre dias.
 - **Node group com max 3:** o corte 1 (HPA sem demonstração) dispensa a folga para escalar. Se a projeção de capacidade passar de ~80% do alocável, o próximo passo é subir o desired para 4, e não trocar o tipo de instância.
-- **Orçamento das janelas restantes** (recalibrado em 2026-11-07 para ≈ US$ 0,27/h medidos; as horas das janelas futuras são estimativas, pelo calendário de cada fase):
+- **Orçamento das janelas restantes** (recalibrado em 2026-11-08 para ≈ US$ 0,28/h medidos; as horas das janelas futuras são estimativas, pelo calendário de cada fase). O D13 é folga e não prevê janela:
 
   | Janela | Horas ligadas | US$/h | US$ |
   |---|---|---|---|
-  | D7, D8, CP2 e D9 (F5) (medido) | ≈ 6,5 | 0,24–0,29 | 1,70 |
-  | D11 (F6: Mercado Pago, CP3) | ~2 | 0,27 | ~0,55 |
-  | D12 (F7: E2E) | ~5 | 0,27 | ~1,35 |
-  | D13 (F8: caos, dashboards) | ~6 | 0,27 | ~1,60 |
-  | D14 (F9: gravação) | ~4 | 0,27 | ~1,10 |
-  | **Total** | **~23,5** | | **≈ US$ 6,30** |
+  | D7, D8, CP2, D9 (F5) e D10 (F6) (medido) | ≈ 8,6 | 0,24–0,33 | 2,40 |
+  | D11 (F7: E2E, caos, DLQ) (estimado, a medir no D12) | ≈ 2,4 | 0,28–0,33 | ≈ 0,70 |
+  | D12 (F8: dashboards, monitores) | ~6 | 0,28 | ~1,70 |
+  | D14 (F9: gravação) | ~4 | 0,28 | ~1,10 |
+  | **Total** | **~21,0** | | **≈ US$ 5,90–6,00** |
 
-  Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 12, menos de um quarto do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 6,50 por dia a US$ 0,27/h), e não o custo das janelas.
+  Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 10, um quinto do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 6,70 por dia a US$ 0,28/h), e não o custo das janelas.
 
 ## Alternativas consideradas
 

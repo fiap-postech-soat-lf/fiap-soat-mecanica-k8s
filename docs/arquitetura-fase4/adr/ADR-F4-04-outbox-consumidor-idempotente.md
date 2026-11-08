@@ -1,7 +1,7 @@
 # ADR-F4-04: Transactional Outbox e consumidor idempotente
 
 - **Status:** Aceito
-- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i) em 2026-11-06 (variante DynamoDB, F5-f a F5-i) e em 2026-11-07 (idempotência por chave de negócio em SQL e do webhook, F6-c e F6-i)
+- **Data:** 2026-11-02 (implementado no esqueleto na F1). Revisada em 2026-11-05 (reenvio da Saga e scheduler de timeouts, F4-h e F4-i) em 2026-11-06 (variante DynamoDB, F5-f a F5-i) em 2026-11-07 (idempotência por chave de negócio em SQL e do webhook, F6-c e F6-i) e em 2026-11-08 (inventário de idempotência dos 4 serviços e prova de resiliência, F7-f, F7-h e F7-i)
 - **Escopo:** transversal (Identity, OS e Billing na versão SQL; Execução na versão DynamoDB, F5; ver a RFC-F4-02)
 - **Implementação:** `templates/servico-base/.../adapters/out/persistence/mensageria/` (`OutboxSqlAdapter`, `OutboxPublisher`, `ProcessadorMensagemSql`) e `V1__mensageria.sql`; no Execução, `adapters/out/dynamo/` (`TransacaoDynamo`) e `adapters/out/dynamo/mensageria/` (`OutboxDynamoAdapter`, `OutboxPublisherDynamo`, `ProcessadorMensagemDynamo`, `IdempotenciaDynamo`)
 
@@ -48,6 +48,32 @@ O `MensagemFactory` preenche `causationId` com o `messageId` da mensagem em proc
 **Billing (SQL, F6-c):** a mesma regra da F5-h, na tabela `comando_atendido` (PK `os_id` + `tipo`, `ids JSONB`, `resposta JSONB`). Antes de aplicar um `GerarOrcamento` ou um `SolicitarPagamento`, o `ParticipanteSaga` consulta a linha: se o `messageId` ou o `causationId` está na cadeia, reemite a resposta guardada num envelope novo (`causationId` = o `messageId` recebido), acrescenta o id à cadeia e **não** refaz o efeito (nem a preferência no Mercado Pago). Um comando fora da cadeia é uma nova rodada e substitui a linha. Tudo na transação do `ProcessadorMensagemSql`. O `OrcamentoFalhou` também fica guardado, para o reenvio reemitir a mesma falha. O `CancelarOrcamento` não tem resposta, então é idempotente pelo estado do orçamento.
 
 **Webhook do Mercado Pago (F6-i):** o Mercado Pago notifica o mesmo pagamento várias vezes (`payment.created`, `payment.updated`) e repete quando não recebe 200. A notificação com assinatura válida é gravada em `webhook_eventos` (200 na hora), e um scheduler (2 s, `FOR UPDATE SKIP LOCKED`) consulta o status no Mercado Pago e aplica o resultado. A chave `(mp_payment_id, status)` é a PK de `mp_status_aplicado`, inserida **na mesma transação** do efeito e da outbox: uma mudança de status vale uma vez, e a repetição conclui sem efeito. É uma segunda camada de idempotência, por chave externa, porque o `messageId` não existe numa notificação HTTP.
+
+## Inventário de idempotência (F7-i)
+
+Revisão feita na F7 sem código novo: cada consumidor dos 4 serviços, o mecanismo contra a **duplicata** (mesmo `messageId`, entrega repetida do SQS) e contra o **reenvio** (novo `messageId`, mesma chave de negócio, F4-h), o teste que prova e onde a prova aparece no EKS. A duplicata é logada como `mensagem_duplicada` nos 4 serviços; `mensagem_processada` é o nome da **tabela** (e do log DEBUG de sucesso do `SqsConsumidor`).
+
+| Serviço | Consumidor / entrada | Duplicata | Reenvio | Teste | Prova no EKS |
+|---|---|---|---|---|---|
+| Identity | `identity-notificacoes` | tabela `mensagem_processada` (`ProcessadorMensagemSql`) | não se aplica (a notificação não tem resposta) | `ProcessadorMensagemSqlIT`, `NotificacaoIT.idempotente` | DoD da F3 (um log só) |
+| OS | `os-saga-respostas` | tabela `mensagem_processada` | resposta fora do passo é descartada (`resposta_fora_do_passo`); a tardia que criou um recurso compensa (F4-f) | `SagaOrquestradorIT` (`amesmaRespostaEnviadaDuasVezesTemUmUnicoEfeito`, `respostaForaDoPassoEDescartadaSemMudarAOs`, `timeoutDoAbrirDiagnostico…`), BDD | F7-f: `resposta_fora_do_passo` |
+| Execução | `execucao-comandos` | `Put` condicional em `execucao-idempotencia` | cadeia de ids por comando em `comandosAtendidos` e reemissão (F5-h) | `ProcessadorMensagemDynamoIT.aMesmaMessageIdDuasVezesTemEfeitoUmaVez`, `ParticipanteSagaTest` | F7-f: `mensagem_duplicada` + `comando_reemitido` |
+| Execução | `execucao-os-eventos` (só `OrdemServicoCancelada`, filtro da assinatura SNS) | `Put` condicional em `execucao-idempotencia` | guarda de estado em `ParticipanteSaga.ordemCancelada`: já `CANCELADA` não muda nada; `EM_EXECUCAO` ou `FINALIZADA` não grava (`comandoForaDeEstado`); ordem desconhecida vira lápide | `TransacaoDynamoIT`, `ParticipanteSagaTest.ordemCanceladaJaCanceladaOuEmExecucaoNaoGrava` e `…DesconhecidaGravaLapide`, `CancelamentoIT` | indireta: passo 10 do `demo-saga-execucao.sh` |
+| Billing | `billing-comandos` | tabela `mensagem_processada` | tabela `comando_atendido` e reemissão (F6-c) | `OrcamentoSagaIT`, `CobrancaSagaIT` | F6 (sem reenvio no EKS) |
+| Billing | webhook do Mercado Pago | `mp_status_aplicado (payment.id, status)` | o status sempre vem do `GET` ao Mercado Pago | `WebhookIT.mesmaNotificacaoTresVezesGeraUmEventoSo` | F6 (simulador do painel) |
+
+**Lacunas conhecidas (limites aceitos):**
+- Não há prova **no EKS** do reenvio do `OrdemServicoCancelada` nem do reenvio no Billing. Os dois têm teste de integração, mas não há cena de caos para eles; a F7-f cobre só o Execução e o `AbrirDiagnostico`.
+- Nenhuma célula ficou sem teste, então a F7 não abriu PR de correção nos serviços.
+
+## Prova de resiliência no EKS (F7-f e F7-h)
+
+Rodadas com `scripts/caos.sh` na janela da F7. Resultados da janela de 2026-11-08 (evidências em `evidencias/F7/` do repositório de planejamento).
+
+- **Execução fora do ar (`execucao-fora`):** o `mecanica-execucao` vai a 0 réplicas, uma OS é aberta, o `AbrirDiagnostico` é copiado na fila com o **mesmo `messageId`** (duplicata real de SQS) e o OS reenvia por timeout (`PT2M`, varredura de 30 s). A fila chega a 3 mensagens (original, cópia e reenvio). Com o Execução de volta: OS `EM_DIAGNOSTICO`, **uma** ordem, `mensagem_duplicada` para a cópia, `comando_reemitido` para o reenvio e `resposta_fora_do_passo` no OS para a resposta repetida. Mostra os dois níveis desta ADR: por `messageId` e por chave de negócio.
+- **Resultado (4m32s, 8 de 8 checks):** a fila chegou a 3 mensagens, o Execução voltou a 1 réplica e a OS foi para `EM_DIAGNOSTICO` com **uma** ordem. O log do Execução tem `mensagem_duplicada` (cópia) e `comando_reemitido` (reenvio), e o do OS tem `resposta_fora_do_passo` (resposta repetida).
+- **Esgotamento (`--esgotar`, opcional):** com `SAGA_TIMEOUT_COMANDO=PT30S` só na janela, o OS esgota as 3 tentativas: OS `CANCELADA`, Saga `FALHOU`, métrica `saga.falhou`. **Resultado (~10 min, por causa dos 2 rollouts do OS):** OS `CANCELADA`, Saga `FALHOU`, ordem `CANCELADA` e fora da fila; o `trap` removeu o `SAGA_TIMEOUT_COMANDO` do OS.
+- **Mensagem envenenada (`mensagem-envenenada`):** um corpo que não é JSON na `mecanica-execucao-comandos`. O consumidor loga `mensagem_falhou` (`json_invalido`) e não apaga a mensagem; depois de 5 recebimentos ela vai para a `mecanica-execucao-comandos-dlq` e o `dlq.depth` sobe para 1. **Resultado (3m57s):** a DLQ chegou a 1 depois de 5 recebimentos (`ApproximateReceiveCount` 6, contando a leitura do script), com 5 linhas `mensagem_falhou/json_invalido` no log; a DLQ foi limpa no fim.
 
 ## Alternativas consideradas
 
