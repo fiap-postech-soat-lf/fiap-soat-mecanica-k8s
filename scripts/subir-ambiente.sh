@@ -3,11 +3,14 @@
 #   0) atualizar-credenciais.sh   1) workflow Cluster do -k8s
 #   2) CD de identity, execucao, billing e os (so quem tem infra/*.tf na main)
 #   3) CD do -auth (API Gateway + authorizer)   4) smoke-borda.sh
+#   5) E2E: dispara o e2e.yml do -os (F7-d). ESCREVE DADOS: cria 3 OS com dados proprios. Com a borda no
+#      ar, e a prova padrao de que o ambiente subiu inteiro (o CD do -os, que roda antes do -auth, pula o E2E)
 # Cada workflow e disparado com o gh ja autenticado e acompanhado ate o fim (sem PAT).
 # No fim imprime a URL da API e o tempo de cada etapa (dado da RFC-F4-03).
 #
-# Uso: scripts/subir-ambiente.sh [--dry-run]
+# Uso: scripts/subir-ambiente.sh [--dry-run] [--sem-e2e]
 #   --dry-run: mostra a ordem e o que seria disparado, sem disparar nada
+#   --sem-e2e: nao dispara o e2e.yml no fim
 # Variaveis: ORG (padrao fiap-postech-soat-lf), AWS_REGION (padrao us-east-1)
 set -euo pipefail
 
@@ -16,11 +19,13 @@ ORG="${ORG:-fiap-postech-soat-lf}"
 # O perfil local pode nao ter regiao: sem isto, o resumo final sai sem a URL da API (NoRegion).
 export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 DRY_RUN=false
+SEM_E2E=false
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
-    -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --sem-e2e) SEM_E2E=true ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
   esac
 done
@@ -104,7 +109,23 @@ else
 fi
 
 echo
-echo "== 5) Resumo"
+echo "== 5) E2E: fiap-soat-mecanica-os / e2e.yml"
+e2e_ok=true
+E2E_LINHA=""
+if $SEM_E2E; then
+  echo "   pulado (--sem-e2e)"
+elif $DRY_RUN; then
+  echo "   [dry-run] gh workflow run e2e.yml -R $ORG/fiap-soat-mecanica-os"
+elif $borda && $smoke_ok; then
+  cronometrar "e2e.yml (os)" disparar_e_esperar fiap-soat-mecanica-os e2e.yml || e2e_ok=false
+  E2E_LINHA=$(gh run list -R "$ORG/fiap-soat-mecanica-os" --workflow e2e.yml --event workflow_dispatch --limit 1 \
+    --json conclusion,url --jq '.[0] | "\(.conclusion): \(.url)"' 2> /dev/null) || E2E_LINHA="(run nao encontrado)"
+else
+  echo "   pulado (sem borda ou com o smoke falho)"
+fi
+
+echo
+echo "== 6) Resumo"
 if ! $DRY_RUN && $borda; then
   echo "API: $(aws ssm get-parameter --name /mecanica/auth/api-url --query Parameter.Value --output text)"
 fi
@@ -112,8 +133,13 @@ for linha in "${TEMPOS[@]}"; do
   echo "   $linha"
 done
 echo "   $(printf '%-28s %s' "total" "$(formatar_duracao $((SECONDS - inicio_total)))")"
+[[ -z "$E2E_LINHA" ]] || echo "   E2E: $E2E_LINHA"
 
 if ! $smoke_ok; then
   echo "Smoke da borda com falhas (ver acima)." >&2
+  exit 1
+fi
+if ! $e2e_ok; then
+  echo "E2E com falhas (ver o run acima); nada foi desfeito." >&2
   exit 1
 fi
