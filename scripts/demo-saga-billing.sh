@@ -28,7 +28,9 @@
 #  10. as DLQs mecanica-billing-comandos-dlq e mecanica-os-saga-respostas-dlq com 0 mensagens e o log do
 #      Billing (30 min) sem mensagem_falhou nem webhook_assinatura_invalida
 #
-# Uso: scripts/demo-saga-billing.sh [--help]
+# Uso: scripts/demo-saga-billing.sh [--so-apro] [--help]
+#   --so-apro: roda so os passos 1-6 e 10 (uma OS ate ENTREGUE com APRO + simulador do painel) e pula os
+#              passos 7-9 (OTHE, nova cobranca e recusa), que o E2E e a F6 ja cobrem (F7-j)
 # Le do SSM /mecanica/auth/api-url e /mecanica/identity/jwt-secret-arn; usa as filas pelo nome e kubectl
 # (kubeconfig do cluster: aws eks update-kubeconfig --name <cluster>) para o log. A chave privada do
 # Identity vai para um arquivo temporario 0600, apagado na saida, e assina o token do passo 4.
@@ -37,10 +39,17 @@
 #            PAGAMENTO_TIMEOUT (segundos de espera de cada pagamento a mao e do polling, padrao 600)
 set -euo pipefail
 
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,1\}//'
-  exit 0
-fi
+SO_APRO=false
+for arg in "$@"; do
+  case "$arg" in
+    --so-apro) SO_APRO=true ;;
+    -h | --help)
+      sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
+  esac
+done
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GERAR_TOKEN="$(dirname "$DIR")/local/jwt/gerar-token-dev.sh"
@@ -248,52 +257,54 @@ esperar 15 2 os_tem "$OS_A" sagaStatus CONCLUIDA || falhar 6 "Saga da OS $OS_A: 
 esperar 10 2 pagamento_tem "$OS_A" APROVADO || falhar 6 "pagamento da OS $OS_A nao esta APROVADO: $(resumo)"
 passo 6 "pagamento APRO -> pagamento APROVADO, OS ENTREGUE e Saga CONCLUIDA"
 
-# 7. OS B: pagamento OTHE a mao e recusa.
-preparar_os 7 "demo do Billing: OS B, recusada com OTHE e nova cobranca (F6)"
-OS_B="$OS_ID"
-aprovar_como "$TOKEN_ATENDENTE" "$ORCAMENTO_ID" 7
-finalizar_execucao 7
-LINK_B1="$LINK"
-pedir_pagamento OTHE "$OS_B"
-esperar "$(tentativas_pagamento)" 5 pagamento_tem "$OS_B" RECUSADO \
-  || falhar 7 "pagamento da OS $OS_B continua '$(jq -r '.vigente.status // empty' "$TMP/resp.json")' apos ${PAGAMENTO_TIMEOUT}s (esperado RECUSADO)"
-MOTIVO=$(jq -er '.vigente.motivo | select(length > 0)' "$TMP/resp.json") || falhar 7 "pagamento RECUSADO sem motivo: $(resumo)"
-os_tem "$OS_B" situacao AGUARDANDO_PAGAMENTO || falhar 7 "OS $OS_B saiu de AGUARDANDO_PAGAMENTO: $(campo_os "$OS_B" situacao || true)"
-status=$(api "$TOKEN_ATENDENTE" GET "/ordem-servicos/$OS_B/historico")
-[[ "$status" == 200 ]] || falhar 7 "GET /ordem-servicos/$OS_B/historico: HTTP $status: $(resumo)"
-jq -e --arg m "$MOTIVO" 'any(.[]; (.motivo // "") | contains($m))' "$TMP/resp.json" > /dev/null \
-  || falhar 7 "o historico da OS $OS_B nao mostra o motivo '$MOTIVO': $(resumo)"
-passo 7 "pagamento OTHE -> RECUSADO (motivo '$MOTIVO'), OS B continua AGUARDANDO_PAGAMENTO e o historico mostra o motivo"
+if ! $SO_APRO; then
+  # 7. OS B: pagamento OTHE a mao e recusa.
+  preparar_os 7 "demo do Billing: OS B, recusada com OTHE e nova cobranca (F6)"
+  OS_B="$OS_ID"
+  aprovar_como "$TOKEN_ATENDENTE" "$ORCAMENTO_ID" 7
+  finalizar_execucao 7
+  LINK_B1="$LINK"
+  pedir_pagamento OTHE "$OS_B"
+  esperar "$(tentativas_pagamento)" 5 pagamento_tem "$OS_B" RECUSADO \
+    || falhar 7 "pagamento da OS $OS_B continua '$(jq -r '.vigente.status // empty' "$TMP/resp.json")' apos ${PAGAMENTO_TIMEOUT}s (esperado RECUSADO)"
+  MOTIVO=$(jq -er '.vigente.motivo | select(length > 0)' "$TMP/resp.json") || falhar 7 "pagamento RECUSADO sem motivo: $(resumo)"
+  os_tem "$OS_B" situacao AGUARDANDO_PAGAMENTO || falhar 7 "OS $OS_B saiu de AGUARDANDO_PAGAMENTO: $(campo_os "$OS_B" situacao || true)"
+  status=$(api "$TOKEN_ATENDENTE" GET "/ordem-servicos/$OS_B/historico")
+  [[ "$status" == 200 ]] || falhar 7 "GET /ordem-servicos/$OS_B/historico: HTTP $status: $(resumo)"
+  jq -e --arg m "$MOTIVO" 'any(.[]; (.motivo // "") | contains($m))' "$TMP/resp.json" > /dev/null \
+    || falhar 7 "o historico da OS $OS_B nao mostra o motivo '$MOTIVO': $(resumo)"
+  passo 7 "pagamento OTHE -> RECUSADO (motivo '$MOTIVO'), OS B continua AGUARDANDO_PAGAMENTO e o historico mostra o motivo"
 
-# 8. Nova cobranca e pagamento APRO a mao.
-status=$(api "$TOKEN_ATENDENTE" POST "/pagamentos/$OS_B/nova-cobranca")
-[[ "$status" == 201 ]] || falhar 8 "POST /pagamentos/$OS_B/nova-cobranca: HTTP $status: $(resumo)"
-LINK=$(jq -er '.link' "$TMP/resp.json") || falhar 8 "nova cobranca sem link: $(resumo)"
-[[ "$LINK" != "$LINK_B1" ]] || falhar 8 "a nova cobranca devolveu o mesmo link"
-status=$(api "$TOKEN_CLIENTE" GET "/pagamentos/por-os/$OS_B")
-[[ "$status" == 200 && "$(jq -r '.vigente.status' "$TMP/resp.json")" == PENDENTE ]] \
-  || falhar 8 "pagamento vigente da OS $OS_B: HTTP $status: $(resumo)"
-jq -e '[.historico[] | select(.status == "SUBSTITUIDO")] | length == 1' "$TMP/resp.json" > /dev/null \
-  || falhar 8 "o historico da OS $OS_B deveria ter 1 cobranca SUBSTITUIDO: $(resumo)"
-pedir_pagamento APRO "$OS_B"
-esperar "$(tentativas_pagamento)" 5 os_tem "$OS_B" situacao ENTREGUE \
-  || falhar 8 "OS $OS_B continua $(campo_os "$OS_B" situacao || true) apos ${PAGAMENTO_TIMEOUT}s (esperado ENTREGUE)"
-passo 8 "nova cobranca 201 (antigo SUBSTITUIDO) -> pagamento APRO -> OS B ENTREGUE"
+  # 8. Nova cobranca e pagamento APRO a mao.
+  status=$(api "$TOKEN_ATENDENTE" POST "/pagamentos/$OS_B/nova-cobranca")
+  [[ "$status" == 201 ]] || falhar 8 "POST /pagamentos/$OS_B/nova-cobranca: HTTP $status: $(resumo)"
+  LINK=$(jq -er '.link' "$TMP/resp.json") || falhar 8 "nova cobranca sem link: $(resumo)"
+  [[ "$LINK" != "$LINK_B1" ]] || falhar 8 "a nova cobranca devolveu o mesmo link"
+  status=$(api "$TOKEN_CLIENTE" GET "/pagamentos/por-os/$OS_B")
+  [[ "$status" == 200 && "$(jq -r '.vigente.status' "$TMP/resp.json")" == PENDENTE ]] \
+    || falhar 8 "pagamento vigente da OS $OS_B: HTTP $status: $(resumo)"
+  jq -e '[.historico[] | select(.status == "SUBSTITUIDO")] | length == 1' "$TMP/resp.json" > /dev/null \
+    || falhar 8 "o historico da OS $OS_B deveria ter 1 cobranca SUBSTITUIDO: $(resumo)"
+  pedir_pagamento APRO "$OS_B"
+  esperar "$(tentativas_pagamento)" 5 os_tem "$OS_B" situacao ENTREGUE \
+    || falhar 8 "OS $OS_B continua $(campo_os "$OS_B" situacao || true) apos ${PAGAMENTO_TIMEOUT}s (esperado ENTREGUE)"
+  passo 8 "nova cobranca 201 (antigo SUBSTITUIDO) -> pagamento APRO -> OS B ENTREGUE"
 
-# 9. OS C: o cliente recusa o orcamento e a Saga compensa.
-D1=$(estoque qtdDisponivel) || falhar 9 "GET /pecas/$PECA_ID_SEED: $(resumo)"
-preparar_os 9 "demo do Billing: OS C, orcamento recusado (F6)"
-OS_C="$OS_ID"
-esperar 10 2 estoque_e qtdDisponivel "$((D1 - QUANTIDADE))" \
-  || falhar 9 "qtdDisponivel $(estoque qtdDisponivel || true), esperado $((D1 - QUANTIDADE)) (reserva da OS C)"
-status=$(api "$TOKEN_CLIENTE" PATCH "/orcamentos/$ORCAMENTO_ID/recusar" '{"motivo":"demo: orcamento recusado"}')
-[[ "$status" == 200 && "$(jq -r .status "$TMP/resp.json")" == RECUSADO ]] \
-  || falhar 9 "PATCH /orcamentos/$ORCAMENTO_ID/recusar: HTTP $status: $(resumo)"
-esperar 15 2 os_tem "$OS_C" situacao CANCELADA \
-  || falhar 9 "OS $OS_C continua $(campo_os "$OS_C" situacao || true) (esperado CANCELADA)"
-esperar 15 2 os_tem "$OS_C" sagaStatus COMPENSADA || falhar 9 "Saga da OS $OS_C: '$(campo_os "$OS_C" sagaStatus || true)', esperado COMPENSADA"
-esperar 10 2 estoque_e qtdDisponivel "$D1" || falhar 9 "qtdDisponivel $(estoque qtdDisponivel || true), esperado $D1 (compensacao)"
-passo 9 "orcamento RECUSADO -> OS C CANCELADA, Saga COMPENSADA e qtdDisponivel de volta a $D1"
+  # 9. OS C: o cliente recusa o orcamento e a Saga compensa.
+  D1=$(estoque qtdDisponivel) || falhar 9 "GET /pecas/$PECA_ID_SEED: $(resumo)"
+  preparar_os 9 "demo do Billing: OS C, orcamento recusado (F6)"
+  OS_C="$OS_ID"
+  esperar 10 2 estoque_e qtdDisponivel "$((D1 - QUANTIDADE))" \
+    || falhar 9 "qtdDisponivel $(estoque qtdDisponivel || true), esperado $((D1 - QUANTIDADE)) (reserva da OS C)"
+  status=$(api "$TOKEN_CLIENTE" PATCH "/orcamentos/$ORCAMENTO_ID/recusar" '{"motivo":"demo: orcamento recusado"}')
+  [[ "$status" == 200 && "$(jq -r .status "$TMP/resp.json")" == RECUSADO ]] \
+    || falhar 9 "PATCH /orcamentos/$ORCAMENTO_ID/recusar: HTTP $status: $(resumo)"
+  esperar 15 2 os_tem "$OS_C" situacao CANCELADA \
+    || falhar 9 "OS $OS_C continua $(campo_os "$OS_C" situacao || true) (esperado CANCELADA)"
+  esperar 15 2 os_tem "$OS_C" sagaStatus COMPENSADA || falhar 9 "Saga da OS $OS_C: '$(campo_os "$OS_C" sagaStatus || true)', esperado COMPENSADA"
+  esperar 10 2 estoque_e qtdDisponivel "$D1" || falhar 9 "qtdDisponivel $(estoque qtdDisponivel || true), esperado $D1 (compensacao)"
+  passo 9 "orcamento RECUSADO -> OS C CANCELADA, Saga COMPENSADA e qtdDisponivel de volta a $D1"
+fi
 
 # 10. Nada ficou em DLQ e o Billing nao registrou falha.
 for dlq in mecanica-billing-comandos-dlq mecanica-os-saga-respostas-dlq; do
@@ -311,4 +322,8 @@ fi
 passo 10 "2 DLQs com 0 mensagens e o log do Billing limpo"
 
 echo
-echo "Demo da Saga com o Billing: tudo OK (OS A $OS_A, OS B $OS_B, OS C $OS_C)."
+if $SO_APRO; then
+  echo "Demo da Saga com o Billing (--so-apro): tudo OK (OS A $OS_A)."
+else
+  echo "Demo da Saga com o Billing: tudo OK (OS A $OS_A, OS B $OS_B, OS C $OS_C)."
+fi
