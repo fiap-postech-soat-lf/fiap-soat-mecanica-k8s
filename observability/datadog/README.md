@@ -19,7 +19,7 @@ Dashboards e monitores da Fase 4, versionados aqui e aplicados por `scripts/data
 | Monitor **Mercado Pago com erro** | `monitors/mercadopago-erros.json` | `mercadopago.erros` > 0 em 10 min |
 
 O **Service Map** é a tela nativa do APM (*APM → Service Map*, `env:prd`) e não tem JSON.
-Todo título começa com "Mecânica —" e tem a tag `projeto:mecanica-fase4`; é o título (dashboard) ou o nome (monitor) que
+Todo título começa com "Mecânica —"; os monitores têm a tag `projeto:mecanica-fase4` (a API de dashboards só aceita as tags `team:` e `ai:`). É o título (dashboard) ou o nome (monitor) que
 o script usa como chave do upsert. **Os monitores não notificam ninguém** (sem `@handle`, `notify_no_data: false`): só
 mudam de estado no Datadog.
 

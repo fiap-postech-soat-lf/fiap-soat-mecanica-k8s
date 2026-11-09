@@ -3,9 +3,7 @@
   "description": "Visão operacional (Fase 3 estendida): volume de OS, tempo por situação, erros de integração, latência e recursos por serviço.",
   "layout_type": "ordered",
   "reflow_type": "auto",
-  "tags": [
-    "projeto:mecanica-fase4"
-  ],
+  "tags": [],
   "template_variables": [
     {
       "name": "service",
