@@ -1,0 +1,21 @@
+{
+  "name": "Mecânica — Webhook com assinatura inválida",
+  "type": "query alert",
+  "query": "sum(last_10m):sum:webhook.recebido{env:prd,resultado:assinatura_invalida}.as_count() > 3",
+  "message": "Mais de 3 webhooks do Mercado Pago com assinatura inválida em 10 min (o smoke de borda manda 1 por subida). Conferir o `MP_WEBHOOK_SECRET` ou uma origem não autorizada chamando /webhooks/mercadopago.",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3
+    },
+    "notify_no_data": false,
+    "require_full_window": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 0,
+    "no_data_timeframe": null,
+    "evaluation_delay": 60
+  }
+}

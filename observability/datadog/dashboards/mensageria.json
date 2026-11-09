@@ -1,0 +1,172 @@
+{
+  "title": "Mecânica — Mensageria",
+  "description": "Filas SQS: profundidade das DLQs, atraso das mensagens (p95) e falhas de consumo e de publicação.",
+  "layout_type": "ordered",
+  "reflow_type": "auto",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "template_variables": [
+    {
+      "name": "service",
+      "prefix": "service",
+      "default": "*"
+    }
+  ],
+  "template_variable_presets": [],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "`dlq.depth` é lida a cada 60 s por serviço; `mensagem.atraso` = agora − `occurredAt` do envelope, medido antes do handler (inclui o tempo no outbox e na fila).",
+        "background_color": "white",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "has_padding": true
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Mensagens nas DLQs",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "q": "max:dlq.depth{env:prd,$service} by {fila}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ],
+        "markers": [
+          {
+            "value": "y = 0",
+            "display_type": "ok dashed"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Atraso da mensagem — p95 por fila",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "q": "p95:mensagem.atraso{env:prd,$service} by {fila}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "toplist",
+        "title": "Mensagens consumidas por fila e tipo",
+        "requests": [
+          {
+            "q": "sum:mensagem.atraso{env:prd,$service} by {fila,tipo}.as_count()"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "mensagem_falhou por serviço",
+        "show_legend": true,
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "display_type": "bars",
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": [
+                  "*"
+                ],
+                "compute": {
+                  "aggregation": "count"
+                },
+                "group_by": [
+                  {
+                    "facet": "service",
+                    "limit": 10,
+                    "sort": {
+                      "aggregation": "count",
+                      "order": "desc"
+                    }
+                  }
+                ],
+                "search": {
+                  "query": "@event:mensagem_falhou"
+                }
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "query1"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "outbox_publicacao_falhou por serviço",
+        "show_legend": true,
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "display_type": "bars",
+            "queries": [
+              {
+                "data_source": "logs",
+                "name": "query1",
+                "indexes": [
+                  "*"
+                ],
+                "compute": {
+                  "aggregation": "count"
+                },
+                "group_by": [
+                  {
+                    "facet": "service",
+                    "limit": 10,
+                    "sort": {
+                      "aggregation": "count",
+                      "order": "desc"
+                    }
+                  }
+                ],
+                "search": {
+                  "query": "@event:outbox_publicacao_falhou"
+                }
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "query1"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "notify_list": []
+}

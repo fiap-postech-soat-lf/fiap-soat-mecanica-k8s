@@ -25,6 +25,13 @@
 #        linhas mensagem_falhou/json_invalido do log do Execucao
 #     4. sem --manter: purge-queue da DLQ e confere 0 depois de 60 s
 #
+#   limpar-dlq [<fila-dlq>]   (F8-j)
+#     purge-queue da DLQ (padrao mecanica-execucao-comandos-dlq), com nova tentativa depois de 60 s se a AWS
+#     recusar (PurgeQueueInProgress), e confere 0. E o par do mensagem-envenenada --manter
+#   webhook-invalido [<n>]   (F8-j)
+#     n (padrao 5) POST /webhooks/mercadopago sem x-signature, esperando 401 em todos. Escreve so uma metrica
+#     (webhook.recebido{resultado:assinatura_invalida}) e um log; nada no banco. Dispara o monitor da F8
+#
 # Uso: scripts/caos.sh <cena> [flags] | --help
 # Le do SSM /mecanica/auth/api-url, usa as filas pelo nome e kubectl (kubeconfig do cluster:
 # aws eks update-kubeconfig --name <cluster>).
@@ -36,13 +43,14 @@ uso() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,
 
 CENA="${1:-}"
 case "$CENA" in
-  execucao-fora | mensagem-envenenada) shift ;;
+  execucao-fora | mensagem-envenenada | limpar-dlq | webhook-invalido) shift ;;
   -h | --help) uso; exit 0 ;;
   *) uso >&2; echo >&2; echo "Cena desconhecida ou ausente: '$CENA'" >&2; exit 1 ;;
 esac
 
 ESGOTAR=false
 MANTER=false
+PARAMETRO=""
 for arg in "$@"; do
   case "$arg" in
     --esgotar)
@@ -52,9 +60,17 @@ for arg in "$@"; do
       [[ "$CENA" == mensagem-envenenada ]] || { echo "--manter so vale em mensagem-envenenada" >&2; exit 1; }
       MANTER=true ;;
     -h | --help) uso; exit 0 ;;
-    *) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
+    -*) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
+    *)
+      if [[ "$CENA" != limpar-dlq && "$CENA" != webhook-invalido ]] || [[ -n "$PARAMETRO" ]]; then
+        echo "Argumento inesperado: $arg" >&2; exit 1
+      fi
+      PARAMETRO="$arg" ;;
   esac
 done
+if [[ "$CENA" == webhook-invalido && -n "$PARAMETRO" && ! "$PARAMETRO" =~ ^[1-9][0-9]*$ ]]; then
+  echo "webhook-invalido espera um numero inteiro positivo, recebeu '$PARAMETRO'" >&2; exit 1
+fi
 
 export AWS_DEFAULT_REGION="${AWS_REGION:-us-east-1}"
 NAMESPACE="${NAMESPACE:-mecanica}"
@@ -343,7 +359,47 @@ cena_mensagem_envenenada() {
   echo "Caos (mensagem envenenada): tudo OK."
 }
 
+# ---------------------------------------------------------------------------------------------------------
+cena_limpar_dlq() {
+  local fila="${PARAMETRO:-$FILA_DLQ}" url
+  url=$(url_fila "$fila") || falhar 1 "fila $fila nao existe"
+  passo 1 "$fila com $(profundidade "$url") mensagem(ns) visivel(is) e $(em_voo "$url") em voo"
+
+  if ! aws sqs purge-queue --queue-url "$url" 2> "$TMP/purge.err"; then
+    # purge-queue so aceita uma chamada por fila a cada 60 s.
+    echo "   purge-queue recusado ($(head -c 120 "$TMP/purge.err")); nova tentativa em 60 s"
+    sleep 60
+    aws sqs purge-queue --queue-url "$url" || falhar 2 "purge-queue da DLQ"
+  fi
+  passo 2 "purge-queue aceito"
+
+  sleep 60
+  [[ "$(profundidade "$url")" == 0 && "$(em_voo "$url")" == 0 ]] \
+    || falhar 3 "$fila ainda tem mensagens 60 s depois do purge"
+  passo 3 "$fila com 0 mensagens; o dlq.depth volta a 0 em ate 1 min e o monitor em ate 10 min"
+
+  echo
+  echo "Caos (limpar DLQ): tudo OK."
+}
+
+# ---------------------------------------------------------------------------------------------------------
+cena_webhook_invalido() {
+  local n="${PARAMETRO:-5}" i status
+  for ((i = 1; i <= n; i++)); do
+    status=$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' \
+      -X POST -H 'Content-Type: application/json' --data '{"action":"payment.updated","data":{"id":"1"}}' \
+      "$API/webhooks/mercadopago?data.id=1&type=payment" || true)
+    [[ "$status" == 401 ]] || falhar 1 "POST $i de $n: HTTP $status, esperado 401 (sem x-signature)"
+  done
+  passo 1 "$n POST /webhooks/mercadopago sem x-signature -> 401 em todos"
+
+  echo
+  echo "Caos (webhook invalido): tudo OK. O monitor passa a ALERT quando passar de 3 em 10 min (o smoke manda 1)."
+}
+
 case "$CENA" in
   execucao-fora) cena_execucao_fora ;;
   mensagem-envenenada) cena_mensagem_envenenada ;;
+  limpar-dlq) cena_limpar_dlq ;;
+  webhook-invalido) cena_webhook_invalido ;;
 esac

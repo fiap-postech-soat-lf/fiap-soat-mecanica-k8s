@@ -1,0 +1,21 @@
+{
+  "name": "Mecânica — Erros 5xx",
+  "type": "query alert",
+  "query": "sum(last_10m):100 * sum:http.server.request.duration{env:prd,http.response.status_code:5*} by {service}.as_count() / sum:http.server.request.duration{env:prd} by {service}.as_count() > 2",
+  "message": "Mais de 2% de respostas 5xx em {{service.name}}. Conferir os logs de erro e os traces com erro do serviço.",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 2
+    },
+    "notify_no_data": false,
+    "require_full_window": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 0,
+    "no_data_timeframe": null,
+    "evaluation_delay": 60
+  }
+}

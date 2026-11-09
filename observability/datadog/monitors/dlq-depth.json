@@ -1,0 +1,21 @@
+{
+  "name": "Mecânica — DLQ com mensagens",
+  "type": "query alert",
+  "query": "max(last_5m):max:dlq.depth{env:prd} by {fila} > 0",
+  "message": "DLQ {{fila.name}} com mensagens. Conferir `@event:mensagem_falhou` no serviço dono da fila e, depois de tratar, limpar com `scripts/caos.sh limpar-dlq`.",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 0
+    },
+    "notify_no_data": false,
+    "require_full_window": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 0,
+    "no_data_timeframe": null,
+    "evaluation_delay": 60
+  }
+}

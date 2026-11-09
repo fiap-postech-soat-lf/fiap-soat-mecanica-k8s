@@ -11,6 +11,17 @@ permissions:
   pull-requests: read
 
 jobs:
+  datadog-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: JSON do Datadog valido
+        run: |
+          shopt -s globstar nullglob
+          arquivos=(observability/datadog/**/*.json)
+          [[ ${#arquivos[@]} -gt 0 ]] || { echo "nenhum JSON em observability/datadog"; exit 1; }
+          for f in "${arquivos[@]}"; do jq empty "$f"; done
+
   ci:
     uses: ./.github/workflows/terraform-ci.yml
     with:
