@@ -1,0 +1,14 @@
+# Metricas usadas pelos dashboards e monitores; o datadog-aplicar.sh --conferir exige que existam no Datadog.
+# Prefixo '?' = opcional (so existe depois do primeiro evento ou da subida com o T01 no ar).
+saga.iniciada
+saga.concluida
+saga.compensada
+saga.falhou
+os.tempo_por_situacao
+dlq.depth
+webhook.recebido
+http.server.request.duration
+?mensagem.atraso
+?mercadopago.erros
+?jvm.memory.used
+?k8s.pod.cpu.utilization

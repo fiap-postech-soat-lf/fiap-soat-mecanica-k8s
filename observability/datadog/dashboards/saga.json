@@ -1,0 +1,180 @@
+{
+  "title": "Mecânica — Saga",
+  "description": "Saga de ordem de serviço: iniciadas, concluídas, compensadas e falhas; duração por passo; estado dos monitores.",
+  "layout_type": "ordered",
+  "reflow_type": "auto",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "template_variables": [
+    {
+      "name": "service",
+      "prefix": "service",
+      "default": "*"
+    }
+  ],
+  "template_variable_presets": [],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "**Saga da OS** (métricas do serviço `mecanica-os`). Uma OS inteira tem esperas humanas de minutos ou dias; o fio condutor é o `osId`/`sagaId` nos logs.",
+        "background_color": "white",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "has_padding": true
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Saga por dia: iniciadas, concluídas, compensadas e falhas",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "q": "sum:saga.iniciada{env:prd,$service}.as_count().rollup(sum, 86400)",
+            "display_type": "bars",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          },
+          {
+            "q": "sum:saga.concluida{env:prd,$service}.as_count().rollup(sum, 86400)",
+            "display_type": "bars",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          },
+          {
+            "q": "sum:saga.compensada{env:prd,$service}.as_count().rollup(sum, 86400)",
+            "display_type": "bars",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          },
+          {
+            "q": "sum:saga.falhou{env:prd,$service}.as_count().rollup(sum, 86400)",
+            "display_type": "bars",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "toplist",
+        "title": "Saga por passo (compensadas)",
+        "requests": [
+          {
+            "q": "sum:saga.compensada{env:prd,$service} by {passo}.as_count()"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "toplist",
+        "title": "Saga por passo (falhas)",
+        "requests": [
+          {
+            "q": "sum:saga.falhou{env:prd,$service} by {passo}.as_count()"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Duração por situação — p50",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "q": "p50:os.tempo_por_situacao{env:prd,$service} by {situacao}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Duração por situação — p95",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "requests": [
+          {
+            "q": "p95:os.tempo_por_situacao{env:prd,$service} by {situacao}",
+            "display_type": "line",
+            "style": {
+              "palette": "dog_classic",
+              "line_type": "solid",
+              "line_width": "normal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "toplist",
+        "title": "OS por situação (transições)",
+        "requests": [
+          {
+            "q": "sum:os.tempo_por_situacao{env:prd,$service} by {situacao}.as_count()"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "manage_status",
+        "title": "Monitores da fase 4",
+        "display_format": "countsAndList",
+        "color_preference": "text",
+        "hide_zero_counts": false,
+        "query": "tag:projeto:mecanica-fase4",
+        "sort": "status,asc",
+        "show_last_triggered": true,
+        "summary_type": "monitors"
+      }
+    },
+    {
+      "definition": {
+        "type": "log_stream",
+        "title": "Anomalias da Saga",
+        "query": "@event:(resposta_fora_do_passo OR comando_reemitido OR mensagem_duplicada)",
+        "indexes": [],
+        "columns": [
+          "host",
+          "service"
+        ],
+        "show_date_column": true,
+        "show_message_column": true,
+        "message_display": "expanded-md",
+        "sort": {
+          "column": "time",
+          "order": "desc"
+        }
+      }
+    }
+  ],
+  "notify_list": []
+}

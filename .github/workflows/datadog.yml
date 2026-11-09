@@ -1,0 +1,34 @@
+# Dashboards e monitores do Datadog como codigo (F8-g). Nao usa credencial da AWS nem depende do EKS.
+name: datadog
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "conferir = so valida; aplicar = valida e faz o upsert (nunca apaga)"
+        type: choice
+        options: [conferir, aplicar]
+        default: conferir
+
+permissions:
+  contents: read
+
+jobs:
+  datadog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Obter codigo
+        uses: actions/checkout@v4
+
+      - name: Datadog (${{ inputs.modo }})
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+          DATADOG_APP_KEY: ${{ secrets.DATADOG_APP_KEY }}
+          MODO: ${{ inputs.modo }}
+        run: |
+          if [[ "$MODO" == aplicar ]]; then
+            bash scripts/datadog-aplicar.sh
+          else
+            bash scripts/datadog-aplicar.sh --conferir
+          fi

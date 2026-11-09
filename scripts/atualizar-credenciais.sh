@@ -3,7 +3,7 @@
 #
 # Uso:
 #   scripts/atualizar-credenciais.sh [--dry-run]           # 3 secrets AWS a partir do perfil local
-#   scripts/atualizar-credenciais.sh --fixos [--dry-run]   # Datadog, SonarCloud e Mercado Pago
+#   scripts/atualizar-credenciais.sh --fixos [--dry-run]   # Datadog (API e Application Key), SonarCloud e Mercado Pago
 # Variaveis: ORG (padrao fiap-postech-soat-lf), AWS_PROFILE (padrao default)
 #
 # Rodar sem argumentos no inicio de TODA sessao do AWS Academy (as credenciais expiram).
@@ -26,12 +26,15 @@ for arg in "$@"; do
 done
 
 # Grava um secret da org com visibilidade all (no plano Free so chega a repos publicos).
+# Com o 3o argumento (repositorio), a visibilidade e selected: so esse repositorio enxerga o secret.
 gravar() {
-  local nome="$1" valor="$2"
+  local nome="$1" valor="$2" repo="${3:-}"
+  local escopo=(--visibility all)
+  [[ -z "$repo" ]] || escopo=(--visibility selected --repos "$repo")
   if $DRY_RUN; then
-    echo "   [dry-run] gh secret set $nome --org $ORG --visibility all (${#valor} caracteres)"
+    echo "   [dry-run] gh secret set $nome --org $ORG ${escopo[*]} (${#valor} caracteres)"
   else
-    printf '%s' "$valor" | gh secret set "$nome" --org "$ORG" --visibility all
+    printf '%s' "$valor" | gh secret set "$nome" --org "$ORG" "${escopo[@]}"
     echo "   $nome gravado"
   fi
 }
@@ -51,7 +54,7 @@ gh api "orgs/$ORG/actions/secrets" --silent 2>/dev/null \
 
 if $FIXOS; then
   echo "== Secrets fixos da org $ORG (Enter vazio pula o secret)"
-  for nome in DATADOG_API_KEY SONAR_TOKEN MP_ACCESS_TOKEN MP_WEBHOOK_SECRET; do
+  for nome in DATADOG_API_KEY DATADOG_APP_KEY SONAR_TOKEN MP_ACCESS_TOKEN MP_WEBHOOK_SECRET; do
     valor=""
     read -rs -p "$nome: " valor || true
     echo >&2
@@ -59,7 +62,8 @@ if $FIXOS; then
     if [[ -z "$valor" ]]; then
       echo "   $nome pulado"
     else
-      gravar "$nome" "$valor"
+      # A Application Key escreve dashboards e monitores: so o -k8s (datadog.yml) a enxerga.
+      if [[ "$nome" == DATADOG_APP_KEY ]]; then gravar "$nome" "$valor" fiap-soat-mecanica-k8s; else gravar "$nome" "$valor"; fi
     fi
   done
   unset valor

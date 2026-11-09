@@ -1,0 +1,20 @@
+{
+  "http.server.request.duration": [
+    "env",
+    "service",
+    "http.route",
+    "http.request.method",
+    "http.response.status_code"
+  ],
+  "os.tempo_por_situacao": [
+    "env",
+    "service",
+    "situacao"
+  ],
+  "mensagem.atraso": [
+    "env",
+    "service",
+    "fila",
+    "tipo"
+  ]
+}

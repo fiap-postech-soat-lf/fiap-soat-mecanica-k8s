@@ -27,4 +27,9 @@ spec:
         value: "otlp"
       - name: OTEL_LOGS_EXPORTER
         value: "otlp"
-
+      # F8-f: o MDC (sagaId, osId, correlationId, messageId) e os pares chave-valor do SLF4J (event, tipo, ...)
+      # viram atributos do log OTLP, e o Datadog passa a ter as facets @osId, @sagaId, @correlationId e @event
+      - name: OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_CAPTURE_MDC_ATTRIBUTES
+        value: "*"
+      - name: OTEL_INSTRUMENTATION_LOGBACK_APPENDER_EXPERIMENTAL_CAPTURE_KEY_VALUE_PAIR_ATTRIBUTES
+        value: "true"

@@ -1,0 +1,21 @@
+{
+  "name": "Mecânica — Latência p95 alta",
+  "type": "query alert",
+  "query": "percentile(last_10m):p95:http.server.request.duration{env:prd} by {service} > 1",
+  "message": "Latência p95 acima de 1 s em {{service.name}}. Abrir os traces mais lentos do serviço e o dashboard \"Mecânica — Operação\".",
+  "tags": [
+    "projeto:mecanica-fase4"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 1
+    },
+    "notify_no_data": false,
+    "require_full_window": false,
+    "notify_audit": false,
+    "include_tags": true,
+    "renotify_interval": 0,
+    "no_data_timeframe": null,
+    "evaluation_delay": 60
+  }
+}
