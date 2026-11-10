@@ -74,7 +74,20 @@
         "title": "Mensagens consumidas por fila e tipo",
         "requests": [
           {
-            "q": "sum:mensagem.atraso{env:prd,$service} by {fila,tipo}.as_count()"
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q",
+                "query": "count:mensagem.atraso{env:prd,$service} by {fila,tipo}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "q"
+              }
+            ],
+            "response_format": "scalar"
           }
         ]
       }

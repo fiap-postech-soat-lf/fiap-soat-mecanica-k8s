@@ -76,7 +76,20 @@
         "title": "Saga por passo (compensadas)",
         "requests": [
           {
-            "q": "sum:saga.compensada{env:prd,$service} by {passo}.as_count()"
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q",
+                "query": "sum:saga.compensada{env:prd,$service} by {passo}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "q"
+              }
+            ],
+            "response_format": "scalar"
           }
         ]
       }
@@ -87,7 +100,20 @@
         "title": "Saga por passo (falhas)",
         "requests": [
           {
-            "q": "sum:saga.falhou{env:prd,$service} by {passo}.as_count()"
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q",
+                "query": "sum:saga.falhou{env:prd,$service} by {passo}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "q"
+              }
+            ],
+            "response_format": "scalar"
           }
         ]
       }
@@ -136,7 +162,20 @@
         "title": "OS por situação (transições)",
         "requests": [
           {
-            "q": "sum:os.tempo_por_situacao{env:prd,$service} by {situacao}.as_count()"
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "q",
+                "query": "count:os.tempo_por_situacao{env:prd,$service} by {situacao}.as_count()",
+                "aggregator": "sum"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "q"
+              }
+            ],
+            "response_format": "scalar"
           }
         ]
       }

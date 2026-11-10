@@ -97,7 +97,7 @@
         "legend_layout": "auto",
         "requests": [
           {
-            "q": "sum:http.server.request.duration{env:prd,http.response.status_code:5*,$service} by {service}.as_count()",
+            "q": "count:http.server.request.duration{env:prd,http.response.status_code:5*,$service} by {service}.as_count()",
             "display_type": "bars",
             "style": {
               "palette": "dog_classic",
