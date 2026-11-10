@@ -1,7 +1,7 @@
 # RFC-F4-03: Capacidade e custo do ambiente no AWS Academy
 
 - **Status:** Aprovado
-- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) em 2026-11-07 com o da janela da F5 (F6, T00 e T08) e em 2026-11-08 com o da janela da F6 (F7, T00 e T04)
+- **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) em 2026-11-07 com o da janela da F5 (F6, T00 e T08) e em 2026-11-08 com o da janela da F6 (F7, T00 e T04) e em 2026-11-09 com o da janela da F7 (F8, T00)
 - **Escopo:** `-k8s` (cluster e scripts do ambiente) e o planejamento das janelas F3–F9
 - **Base:** RFC-001 do `fiap-soat-mecanica-api-k8s` do grupo (EKS no Learner Lab), que continua valendo para as restrições do Academy
 
@@ -101,7 +101,7 @@ Com a F5, a taxa conjunta do D8, do CP2 e da F5 é de ≈ **US$ 0,27/h** (US$ 1,
 
 A taxa acumulada passa a ser de ≈ **US$ 0,28/h** (US$ 2,40 ÷ ≈ 8,6 h). É o valor a usar daqui em diante. O **total do projeto até a F6 é US$ 2,40** (saldo US$ 47,60). A tabela de preços do início desta RFC (≈ US$ 0,40/h com 3 RDS) continua sendo o teto, não o valor esperado.
 
-**Janela da F7 (D11, 2026-11-08):** o mesmo ambiente da F6. Ficou ligado de ≈ 16:32 a 18:58 UTC, **≈ 2 h 26** (≈ 2,4 h): `subir-ambiente.sh` em 55m07s, E2E no CD do OS (36 de 36 checks), regressão do Execução, os três caos (Execução fora, esgotamento e mensagem envenenada), o ensaio do pagamento e `destruir-ambiente.sh` em 22m30s (sem órfãos). A estimativa pela taxa acumulada de US$ 0,28/h é de **≈ US$ 0,70** (US$ 0,65–0,80), abaixo dos US$ 0,85–1,00 previstos, porque o pagamento manual foi mais rápido que o orçado. **O valor medido só sai no D12**, porque o painel atualiza na virada do dia; ele entra aqui na F8 (T00). O projeto fica em ≈ US$ 3,10 até o fim da F7.
+**Janela da F7 (D11, 2026-11-08):** o mesmo ambiente da F6. Ficou ligado de ≈ 16:32 a 18:58 UTC, **≈ 2 h 26** (≈ 2,4 h): `subir-ambiente.sh` em 55m07s, E2E no CD do OS (36 de 36 checks), regressão do Execução, os três caos (Execução fora, esgotamento e mensagem envenenada), o ensaio do pagamento e `destruir-ambiente.sh` em 22m30s (sem órfãos). O painel, lido no D12 (2026-11-09), mostrou "Used US$ 3.2 of US$ 50", ou seja, **saldo de US$ 46,80**. A queda de US$ 0,80 (± US$ 0,05) desde os US$ 47,60 anteriores é o custo da janela: **US$ 0,80** (≈ **US$ 0,33/h**), acima da estimativa de ≈ US$ 0,70 e dentro dos US$ 0,85–1,00 previstos. O **total do projeto até a F7 é US$ 3,20** (saldo US$ 46,80), e a taxa acumulada fica em ≈ **US$ 0,29/h** (US$ 3,20 ÷ ≈ 11,0 h).
 
 ## Decisão
 
@@ -112,10 +112,10 @@ A taxa acumulada passa a ser de ≈ **US$ 0,28/h** (US$ 2,40 ÷ ≈ 8,6 h). É o
   | Janela | Horas ligadas | US$/h | US$ |
   |---|---|---|---|
   | D7, D8, CP2, D9 (F5) e D10 (F6) (medido) | ≈ 8,6 | 0,24–0,33 | 2,40 |
-  | D11 (F7: E2E, caos, DLQ) (estimado, a medir no D12) | ≈ 2,4 | 0,28–0,33 | ≈ 0,70 |
-  | D12 (F8: dashboards, monitores) | ~6 | 0,28 | ~1,70 |
+  | D11 (F7: E2E, caos, DLQ) (medido no D12) | ≈ 2,4 | 0,33 | 0,80 |
+  | D12 (F8: trace, logs, dashboards e monitores; sem o `--esgotar`) (estimado; a medir no D13) | ≈ 2,6 | 0,29–0,33 | ≈ 0,76–0,86 |
   | D14 (F9: gravação) | ~4 | 0,28 | ~1,10 |
-  | **Total** | **~21,0** | | **≈ US$ 5,90–6,00** |
+  | **Total** | **~18,0** | | **≈ US$ 5,05–5,20** |
 
   Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 10, um quinto do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 6,70 por dia a US$ 0,28/h), e não o custo das janelas.
 
