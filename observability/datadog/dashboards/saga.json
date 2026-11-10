@@ -3,9 +3,7 @@
   "description": "Saga de ordem de serviço: iniciadas, concluídas, compensadas e falhas; duração por passo; estado dos monitores.",
   "layout_type": "ordered",
   "reflow_type": "auto",
-  "tags": [
-    "projeto:mecanica-fase4"
-  ],
+  "tags": [],
   "template_variables": [
     {
       "name": "service",

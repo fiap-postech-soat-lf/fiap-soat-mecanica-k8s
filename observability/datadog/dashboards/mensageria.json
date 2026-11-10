@@ -3,9 +3,7 @@
   "description": "Filas SQS: profundidade das DLQs, atraso das mensagens (p95) e falhas de consumo e de publicação.",
   "layout_type": "ordered",
   "reflow_type": "auto",
-  "tags": [
-    "projeto:mecanica-fase4"
-  ],
+  "tags": [],
   "template_variables": [
     {
       "name": "service",
