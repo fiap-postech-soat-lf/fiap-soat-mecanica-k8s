@@ -13,7 +13,7 @@ Decisões de arquitetura transversais da Fase 4 (os 7 repositórios). As decisõ
 | [ADR-F4-07](ADR-F4-07-jwt-rs256.md) | JWT RS256 emitido pelo Identity: par gerado no Terraform, chave pública no SSM, chave nova a cada janela | Aceito |
 | [ADR-F4-08](ADR-F4-08-ecr-por-servico.md) | Um repositório ECR por serviço no `infra/` do serviço, `MUTABLE` e `force_delete` | Aceito |
 | [ADR-F4-09](ADR-F4-09-rest-sincrono-resilience4j.md) | REST síncrono (veículo e catálogo): timeout de 2 s, retry sem circuit breaker, repasse do JWT só nos clientes do Identity e do OS (revisada na F5) | Aceito |
-| ADR-F4-10 | Observabilidade | *TODO* (F8) |
+| [ADR-F4-10](ADR-F4-10-observabilidade.md) | Observabilidade: collector + agente Java → Datadog; trace restaurado no outbox pelo `traceparent` do envelope; `osId`/`sagaId` como chave da OS; logs OTLP com MDC; dashboards e monitores como código, sem notificação | Aceito |
 | [ADR-F4-11](ADR-F4-11-pipeline-padrao-e-ruleset.md) | Reusable workflows `@v1` e ruleset da `main` com PR e checks obrigatórios e 0 aprovações | Aceito |
 | [ADR-F4-12](ADR-F4-12-notificacoes-no-identity.md) | Notificações no Identity: consome `os-eventos`, adapter de log; a assinatura é do `infra/` do OS (revisada na F4) | Aceito |
 | ADR-F4-13 | Recomeço limpo com seeds de UUIDs estáveis | *TODO* |
