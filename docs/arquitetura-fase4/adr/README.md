@@ -16,7 +16,7 @@ Decisões de arquitetura transversais da Fase 4 (os 7 repositórios). As decisõ
 | [ADR-F4-10](ADR-F4-10-observabilidade.md) | Observabilidade: collector + agente Java → Datadog; trace restaurado no outbox pelo `traceparent` do envelope; `osId`/`sagaId` como chave da OS; logs OTLP com MDC; dashboards e monitores como código, sem notificação | Aceito |
 | [ADR-F4-11](ADR-F4-11-pipeline-padrao-e-ruleset.md) | Reusable workflows `@v1` e ruleset da `main` com PR e checks obrigatórios e 0 aprovações | Aceito |
 | [ADR-F4-12](ADR-F4-12-notificacoes-no-identity.md) | Notificações no Identity: consome `os-eventos`, adapter de log; a assinatura é do `infra/` do OS (revisada na F4) | Aceito |
-| ADR-F4-13 | Recomeço limpo com seeds de UUIDs estáveis | *TODO* |
+| [ADR-F4-13](ADR-F4-13-recomeco-limpo-seeds-uuids-estaveis.md) | Recomeço limpo: Flyway e seed por serviço com os UUIDs do V9, runner condicional do DynamoDB e sem migração de dados do monolito | Aceito |
 | [ADR-F4-14](ADR-F4-14-ssm-entre-repositorios.md) | Configuração entre repositórios via SSM Parameter Store e bucket de state derivado do account ID | Aceito |
 
 RFCs em [`../rfc/`](../rfc/):
@@ -25,4 +25,4 @@ RFCs em [`../rfc/`](../rfc/):
 |---|---|---|
 | [RFC-F4-01](../rfc/RFC-F4-01-mercado-pago.md) | Mercado Pago: Checkout Pro com cartões APRO e OTHE, webhook na aplicação dona do token, validação do `x-signature`, status consultado e idempotência por `(payment.id, status)` | Aprovado (F6) |
 | [RFC-F4-02](../rfc/RFC-F4-02-modelagem-dynamodb-execucao.md) | Modelagem DynamoDB do Execução: 6 tabelas, GSIs esparsos `fila` e `pendentes`, estoque materializado e reserva atômica | Aprovado (F5) |
-| [RFC-F4-03](../rfc/RFC-F4-03-capacidade-e-custo.md) | Capacidade e custo do ambiente no Academy (números da janela do D7) | Aprovado |
+| [RFC-F4-03](../rfc/RFC-F4-03-capacidade-e-custo.md) | Capacidade e custo do ambiente no Academy (medidos até a F8; F9 estimada) | Aprovado |

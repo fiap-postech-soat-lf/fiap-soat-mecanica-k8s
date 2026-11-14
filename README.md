@@ -2,7 +2,7 @@
 
 Infraestrutura compartilhada da **Fase 4** da Oficina Mecânica do Braia (Tech Challenge FIAP SOAT): cluster EKS e add-ons, workflows reutilizáveis de CI/CD, template dos microsserviços, ambiente local e documentação de arquitetura.
 
-> 🚧 Em construção (fase F2). As seções marcadas com *TODO* são preenchidas nas próximas fases.
+Visão geral da arquitetura: [diagrama da AWS](docs/arquitetura-fase4/diagrama/arquitetura-aws-fase4.png) (4 serviços, 3 RDS Postgres e DynamoDB, SNS + SQS, API Gateway com Lambda Authorizer, Traefik no EKS e Datadog). Decisões em [`docs/arquitetura-fase4/adr/`](docs/arquitetura-fase4/adr/README.md) e RFCs em [`docs/arquitetura-fase4/rfc/`](docs/arquitetura-fase4/rfc/). Vídeo da entrega: *link entra depois do upload*.
 
 ## Repositórios da Fase 4
 
@@ -18,6 +18,20 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | [`fiap-soat-mecanica-db`](https://github.com/fiap-postech-soat-lf/fiap-soat-mecanica-db) | Módulo Terraform `rds-postgres` |
 | **`fiap-soat-mecanica-k8s`** (este) | EKS, add-ons, reusable workflows, template dos serviços, ambiente local |
 
+## Cobertura e Quality Gate (SonarCloud)
+
+Leitura da API pública do SonarCloud em 2026-11-14, na `main` de cada repositório (projeto `fiap-postech-soat-lf_<repositório>`). O CI (`ci / build`) falha se o Quality Gate falhar, e o JaCoCo exige ≥ 80% de linhas.
+
+| Repositório | Cobertura | Quality Gate |
+|---|---|---|
+| `-identity` | 95,5% | OK |
+| `-os` | 95,4% | OK |
+| `-billing` | 96,0% | OK |
+| `-execucao` | 95,7% | OK |
+| `-auth` | 98,8% | OK |
+
+O `-db` e este repositório são só Terraform e scripts, com o check `ci / terraform`. Cada README de serviço tem os badges de cobertura e do gate.
+
 ## Estrutura
 
 | Pasta | Conteúdo |
@@ -28,7 +42,7 @@ Todos na org [`fiap-postech-soat-lf`](https://github.com/fiap-postech-soat-lf):
 | `local/` | `docker compose` com LocalStack (mensageria da tabela 3.4) e os Postgres dos serviços SQL, `verificar.sh` e JWT de dev (ver `local/README.md`) |
 | `k8s/` | Manifestos compartilhados aplicados pelo `cluster.yml`: namespace `mecanica`, RBAC e OpenTelemetryCollector (DaemonSet → Datadog), Instrumentation `java-instrumentation` e o echo de diagnóstico `/health-echo` (`traefik/whoami`) |
 | `terraform/` | EKS 1.37 + node group (3 × t3.medium, launch template IMDSv2 hop 2), add-on metrics-server, Traefik (NodePort 30090), OpenTelemetry Operator, NLB público na frente do Traefik e os parâmetros SSM `/mecanica/k8s/*`. Só roda pelo workflow `cluster.yml` (F2) |
-| `docs/` | `contratos/` (convenções, envelope, JWT e rotas; ver `docs/contratos/convencoes.md`) e `arquitetura-fase4/adr/` (ADRs transversais F4-01 a 05, 11 e 14) |
+| `docs/` | `contratos/` (convenções, envelope, JWT e rotas; ver `docs/contratos/convencoes.md`) e `arquitetura-fase4/adr/` (ADRs transversais F4-01 a F4-14 e RFCs) |
 
 ## Reusable workflows
 
@@ -68,4 +82,11 @@ Java 21, Docker + Compose v2, Terraform 1.15.8 (fixado em `.terraform-version` p
 
 ## Origem
 
-Parte do conteúdo deste repositório é adaptada dos repositórios da Fase 3 do grupo (usados só para consulta). *TODO (F9)*: listar os repositórios de origem.
+Parte do conteúdo deste repositório é adaptada dos repositórios da Fase 3 do grupo (usados só para consulta, sem cópia de histórico):
+
+| Repositório de origem | Papel na Fase 3 |
+|---|---|
+| [`gabriel-sartoretto/fiap-soat-mecanica-api`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api) | Monolito Spring Boot (o domínio que a Fase 4 decompõe em 4 serviços) |
+| [`gabriel-sartoretto/fiap-soat-mecanica-api-db`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-db) | Terraform do RDS (origem do módulo `rds-postgres` do `-db`) |
+| [`gabriel-sartoretto/fiap-soat-mecanica-api-auth`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-auth) | Lambda Authorizer e API Gateway (origem do `-auth`) |
+| [`gabriel-sartoretto/fiap-soat-mecanica-api-k8s`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-k8s) | EKS, Traefik, manifestos e workflows (origem deste repositório) |
