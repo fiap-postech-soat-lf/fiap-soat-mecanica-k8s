@@ -9,6 +9,10 @@ on:
         type: choice
         options: [conferir, aplicar]
         default: conferir
+      conta_nova:
+        description: "conta sem metricas (trial novo): metrica obrigatoria ausente vira aviso"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,9 +30,12 @@ jobs:
           DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
           DATADOG_APP_KEY: ${{ secrets.DATADOG_APP_KEY }}
           MODO: ${{ inputs.modo }}
+          CONTA_NOVA: ${{ inputs.conta_nova }}
         run: |
+          args=()
+          [[ "$CONTA_NOVA" == true ]] && args+=(--conta-nova)
           if [[ "$MODO" == aplicar ]]; then
-            bash scripts/datadog-aplicar.sh
+            bash scripts/datadog-aplicar.sh "${args[@]}"
           else
-            bash scripts/datadog-aplicar.sh --conferir
+            bash scripts/datadog-aplicar.sh --conferir "${args[@]}"
           fi
