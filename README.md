@@ -79,14 +79,3 @@ Os secrets fixos (`DATADOG_API_KEY`, `SONAR_TOKEN`, `MP_ACCESS_TOKEN`, `MP_WEBHO
 ## Pré-requisitos locais
 
 Java 21, Docker + Compose v2, Terraform 1.15.8 (fixado em `.terraform-version` para o tfenv), AWS CLI v2, GitHub CLI 2.50+, `jq`, `envsubst`, `shellcheck`.
-
-## Origem
-
-Parte do conteúdo deste repositório é adaptada dos repositórios da Fase 3 do grupo (usados só para consulta, sem cópia de histórico):
-
-| Repositório de origem | Papel na Fase 3 |
-|---|---|
-| [`gabriel-sartoretto/fiap-soat-mecanica-api`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api) | Monolito Spring Boot (o domínio que a Fase 4 decompõe em 4 serviços) |
-| [`gabriel-sartoretto/fiap-soat-mecanica-api-db`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-db) | Terraform do RDS (origem do módulo `rds-postgres` do `-db`) |
-| [`gabriel-sartoretto/fiap-soat-mecanica-api-auth`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-auth) | Lambda Authorizer e API Gateway (origem do `-auth`) |
-| [`gabriel-sartoretto/fiap-soat-mecanica-api-k8s`](https://github.com/gabriel-sartoretto/fiap-soat-mecanica-api-k8s) | EKS, Traefik, manifestos e workflows (origem deste repositório) |
