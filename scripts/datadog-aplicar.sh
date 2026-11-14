@@ -81,7 +81,8 @@ while IFS= read -r linha; do
   [[ -z "$linha" || "$linha" == \#* ]] && continue
   opcional=false
   [[ "$linha" == \?* ]] && { opcional=true; linha="${linha#\?}"; }
-  status=$(dd_api GET "/api/v1/metrics/$linha")
+  # all-tags (v2) responde 404 para metrica que a conta nunca recebeu; GET /api/v1/metrics/<nome> responde 200 mesmo assim.
+  status=$(dd_api GET "/api/v2/metrics/$linha/all-tags")
   if [[ "$status" == 200 ]]; then ok "metrica existe: $linha"
   elif $opcional; then aviso "metrica opcional ainda ausente: $linha"
   elif $CONTA_NOVA; then aviso "metrica ausente (conta nova): $linha"
