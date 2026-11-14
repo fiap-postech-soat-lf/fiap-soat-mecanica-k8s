@@ -40,6 +40,18 @@ gh workflow run datadog.yml -R fiap-postech-soat-lf/fiap-soat-mecanica-k8s -f mo
 Localmente: `DATADOG_API_KEY=… DATADOG_APP_KEY=… scripts/datadog-aplicar.sh [--conferir | --dry-run]`. O script **nunca apaga**.
 Se um dashboard ou monitor sair do repositório, apague-o à mão no Datadog.
 
+## Conta nova
+
+Uma conta sem métricas (trial novo) recebe tudo em **dois tempos**:
+
+1. Com o EKS desligado: `gh workflow run datadog.yml -R fiap-postech-soat-lf/fiap-soat-mecanica-k8s -f modo=aplicar -f conta_nova=true`
+   (ou `scripts/datadog-aplicar.sh --conta-nova`). Métrica obrigatória ausente vira aviso, e os 3 dashboards e 6 monitores são criados.
+2. Depois da subida e do 1º E2E: `-f modo=aplicar` sem `conta_nova`. Agora as métricas existem, e os percentis são ligados.
+   Um 2º E2E gera as amostras de p95.
+
+As facets `@osId`, `@sagaId`, `@correlationId` e `@event` são recriadas à mão (*Logs → Add facet*) depois dos primeiros logs.
+Troca de chaves: `scripts/atualizar-credenciais.sh --fixos`.
+
 ## Chaves
 
 - `DATADOG_API_KEY`: secret da org (também usado pelo collector).

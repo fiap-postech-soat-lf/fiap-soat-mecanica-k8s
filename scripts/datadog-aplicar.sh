@@ -2,10 +2,12 @@
 # Aplica no Datadog os dashboards e monitores de observability/datadog/ (F8-g). Upsert pelo titulo (dashboard)
 # ou pelo nome (monitor); NUNCA apaga nada. Nao toca a AWS nem o EKS.
 #
-# Uso: scripts/datadog-aplicar.sh [--conferir] [--dry-run] | --help
+# Uso: scripts/datadog-aplicar.sh [--conferir] [--dry-run] [--conta-nova] | --help
 #   --conferir  so valida: JSON (jq), cada monitor em /api/v1/monitor/validate, cada metrica do metricas.txt
 #               (obrigatoria = erro; '?' = aviso) e o estado dos percentis. Sai com 1 se algo falhar
 #   --dry-run   valida como o --conferir e mostra o que criaria ou atualizaria, sem escrever
+#   --conta-nova  conta sem metricas (trial novo): metrica obrigatoria ausente vira aviso em vez de erro. Depois da
+#               1a subida, rodar de novo sem a flag para ligar os percentis e validar tudo
 #   (sem flag)  valida, liga os percentis das distribuicoes (percentis.json) e faz o upsert
 # Variaveis (do ambiente; nunca impressas): DATADOG_API_KEY, DATADOG_APP_KEY, DD_SITE (padrao datadoghq.com)
 # A Application Key precisa dos escopos dashboards_read/write, monitors_read/write, metrics_read e
@@ -16,10 +18,12 @@ uso() { sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,
 
 CONFERIR=false
 DRY_RUN=false
+CONTA_NOVA=false
 for arg in "$@"; do
   case "$arg" in
     --conferir) CONFERIR=true ;;
     --dry-run) DRY_RUN=true ;;
+    --conta-nova) CONTA_NOVA=true ;;
     -h | --help) uso; exit 0 ;;
     *) echo "Argumento desconhecido: $arg" >&2; exit 1 ;;
   esac
@@ -80,6 +84,7 @@ while IFS= read -r linha; do
   status=$(dd_api GET "/api/v1/metrics/$linha")
   if [[ "$status" == 200 ]]; then ok "metrica existe: $linha"
   elif $opcional; then aviso "metrica opcional ainda ausente: $linha"
+  elif $CONTA_NOVA; then aviso "metrica ausente (conta nova): $linha"
   else erro "metrica ausente: $linha (HTTP $status)"; fi
 done < "$RAIZ/metricas.txt"
 

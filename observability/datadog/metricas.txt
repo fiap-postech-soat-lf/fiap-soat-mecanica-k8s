@@ -1,9 +1,10 @@
 # Metricas usadas pelos dashboards e monitores; o datadog-aplicar.sh --conferir exige que existam no Datadog.
 # Prefixo '?' = opcional (so existe depois do primeiro evento ou da subida com o T01 no ar).
 saga.iniciada
-saga.concluida
+# saga.concluida e saga.falhou sao contadores lazy (SagaMetrics): so existem depois de uma OS ENTREGUE ou de um --esgotar.
+?saga.concluida
 saga.compensada
-saga.falhou
+?saga.falhou
 os.tempo_por_situacao
 dlq.depth
 webhook.recebido
