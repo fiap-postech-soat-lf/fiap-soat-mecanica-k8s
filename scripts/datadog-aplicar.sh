@@ -77,15 +77,18 @@ for f in "$RAIZ"/monitors/*.json; do
 done
 
 echo "== Metricas"
+# Lista das metricas ativas nos ultimos 3 dias. Os endpoints por nome (GET /api/v1/metrics/<nome>, v2 all-tags)
+# respondem 200 para metrica que a conta nunca recebeu, entao nao servem para provar a existencia.
+status=$(dd_api GET "/api/v1/metrics?from=$(( $(date +%s) - 259200 ))")
+if [[ "$status" == 200 ]]; then jq -r '.metrics[]?' "$TMP/resp.json" > "$TMP/ativas.txt"; else : > "$TMP/ativas.txt"; aviso "nao foi possivel listar as metricas (HTTP $status)"; fi
 while IFS= read -r linha; do
   [[ -z "$linha" || "$linha" == \#* ]] && continue
   opcional=false
   [[ "$linha" == \?* ]] && { opcional=true; linha="${linha#\?}"; }
-  status=$(dd_api GET "/api/v1/metrics/$linha")
-  if [[ "$status" == 200 ]]; then ok "metrica existe: $linha"
+  if grep -qxF "$linha" "$TMP/ativas.txt"; then ok "metrica existe: $linha"
   elif $opcional; then aviso "metrica opcional ainda ausente: $linha"
   elif $CONTA_NOVA; then aviso "metrica ausente (conta nova): $linha"
-  else erro "metrica ausente: $linha (HTTP $status)"; fi
+  else erro "metrica ausente: $linha"; fi
 done < "$RAIZ/metricas.txt"
 
 echo "== Percentis"
