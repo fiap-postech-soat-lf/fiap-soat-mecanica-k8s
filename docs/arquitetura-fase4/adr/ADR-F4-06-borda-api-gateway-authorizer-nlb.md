@@ -8,7 +8,7 @@
 
 ## Contexto
 
-A Fase 4 exige um API Gateway na frente dos serviços, com autenticação por JWT nas rotas protegidas. Na Fase 3 do grupo, o Traefik fazia esse papel exposto em `NodePort` (ADR-003), com o IP do node como endereço. Aquela ADR já previa trocar por um endereço estável se o API Gateway da AWS precisasse de um destino fixo.
+A Fase 4 exige um API Gateway na frente dos serviços, com autenticação por JWT nas rotas protegidas. Antes, o Traefik fazia esse papel exposto em `NodePort`, com o IP do node como endereço, o que não dá um destino fixo ao API Gateway da AWS.
 
 Restrições:
 - O Academy não deixa criar IAM roles. A Lambda usa a `LabRole`, e qualquer recurso que dependa de uma service-linked role nova pode ser bloqueado.
@@ -59,7 +59,7 @@ cliente ──HTTPS──▶ HTTP API mecanica-api ($default)
 | **HTTP API + VPC Link → NLB interno** | Tiraria o NLB da internet e o JWT do trecho em HTTP aberto. Exige a service-linked role `AWSServiceRoleForAPIGateway`, que o Academy pode não deixar criar, e o VPC Link leva vários minutos para criar e destruir em cada janela. É a primeira opção se o projeto sair do Academy |
 | **REST API (v1) com authorizer** | Mais caro por requisição e mais verboso em Terraform. O HTTP API tem authorizer Lambda com resposta simples e cache, que é o que o projeto precisa |
 | **ALB na frente do Traefik** | Custa mais que o NLB (LCU) e não acrescenta nada, porque o roteamento L7 já é do Traefik. O AWS Load Balancer Controller exigiria IRSA (role nova), o que não é permitido |
-| **Ingress do Kubernetes como gateway (ADR-003 do grupo)** | O Traefik não valida o JWT RS256 sem plugin, e o enunciado da Fase 4 pede API Gateway com Lambda. O endereço `NodePort` muda quando um node é trocado |
+| **Ingress do Kubernetes como gateway** | O Traefik não valida o JWT RS256 sem plugin, e o enunciado da Fase 4 pede API Gateway com Lambda. O endereço `NodePort` muda quando um node é trocado |
 | **`/auth/**` como rota pública** | Abriria qualquer rota futura do Identity sob `/auth`. Só os dois logins são públicos |
 | **Authorizer `JWT` nativo do HTTP API** | Exige um issuer OIDC com JWKS publicado por HTTPS. O Identity não publica JWKS, e as regras de `principal_type` e `cargo` precisariam de código mesmo assim |
 

@@ -9,7 +9,7 @@
 
 O Execução guarda seus dados em **6 tabelas DynamoDB on-demand**. A ordem de execução é um documento único, com prestações e alocações aninhadas. O estoque fica materializado em três contadores, e a reserva de N peças é um `TransactWriteItems` condicional: ou reserva todas, ou nenhuma. Toda escrita de negócio vai na mesma transação que a linha da outbox e o registro de idempotência. Dois GSIs esparsos atendem as duas listas ordenadas: a fila de execução e as mensagens pendentes da outbox.
 
-A modelagem parte dos padrões de acesso abaixo, e não das tabelas do monolito (`pecas`, `prestacao_servico` e `alocacao_pecas`, migrations V4, V7 e V8). A reserva atômica é provada pelo `ReservaConcorrenteIT` (10 rodadas, duas threads disputando a última unidade).
+A modelagem parte dos padrões de acesso abaixo, e não das tabelas relacionais da aplicação anterior (`pecas`, `prestacao_servico` e `alocacao_pecas`). A reserva atômica é provada pelo `ReservaConcorrenteIT` (10 rodadas, duas threads disputando a última unidade).
 
 ## Padrões de acesso
 
@@ -72,7 +72,7 @@ Só as ordens ativas têm os atributos `fila = "ATIVA"` e `filaOrdem = "<priorid
 | `EM_DIAGNOSTICO` | 3 |
 | `FINALIZADA`, `CANCELADA` | fora da fila (`REMOVE fila, filaOrdem`) |
 
-Uma `Query` com `fila = "ATIVA"` devolve a fila já ordenada, como o `listarAtivas` do monolito, sem `Scan` e sem ordenar em memória. Cada mudança de status reescreve `filaOrdem` na mesma escrita da ordem. O `cursor` da rota é o `LastEvaluatedKey` em base64.
+Uma `Query` com `fila = "ATIVA"` devolve a fila já ordenada, como a listagem de ordens ativas da aplicação anterior, sem `Scan` e sem ordenar em memória. Cada mudança de status reescreve `filaOrdem` na mesma escrita da ordem. O `cursor` da rota é o `LastEvaluatedKey` em base64.
 
 ### Outbox (GSI `pendentes`)
 
@@ -150,7 +150,7 @@ Na corrida pela última unidade, as duas reservas leem `qtdDisponivel = 1`, e s�
 | Alternativa | Motivo da rejeição |
 |---|---|
 | Tabela única (*single-table design*) com prefixos `OS#`, `PECA#` | Não há acesso que leia itens de tipos diferentes de uma vez, porque a ordem já é um item só. Seis tabelas deixam o Terraform, os testes e a avaliação mais legíveis |
-| Prestações e alocações em tabelas próprias, como no monolito | Cada leitura viraria `Query` em três tabelas, e cada escrita precisaria de transação para manter a unicidade entre itens. A ordem tem poucas dezenas de linhas, então cabe num documento |
+| Prestações e alocações em tabelas próprias, como no modelo relacional | Cada leitura viraria `Query` em três tabelas, e cada escrita precisaria de transação para manter a unicidade entre itens. A ordem tem poucas dezenas de linhas, então cabe num documento |
 | Só `qtdEstoque` e `qtdReservada`, conferindo a versão em toda reserva | A condição não faz conta, então a reserva teria que ler e conferir a `versao`. Duas reservas de peças com estoque sobrando entrariam em conflito à toa |
 | Reserva como contador dentro da ordem, sem `execucao-reservas` | A liberação e a baixa precisam saber quanto de cada peça aquela OS reservou e em que estado está. A linha `(osId, pecaId)` com status condicional também é a proteção contra devolução dupla |
 | Fila por `Scan` com ordenação em memória | O `Scan` cresce com as ordens finalizadas e lê a tabela inteira a cada chamada |
@@ -164,8 +164,8 @@ A modelagem (tabelas, chaves, GSIs, estoque e transações) saiu como estava nes
 | Previsto | Realizado | Motivo |
 |---|---|---|
 | Beans `@DynamoDbBean` + `TableSchema` do Enhanced Client para o mapeamento | Mapeamento manual dos itens em `Itens` e `Atributos`; o `DynamoDbEnhancedClient` fica só no `DynamoConfig` | Com a escrita toda no cliente de baixo nível, os beans seriam um segundo modelo a manter, e o documento aninhado (prestações, alocações e `comandosAtendidos`) é mais direto de montar à mão |
-| `nome` da peça sem unicidade | Igual: sem índice em DynamoDB | Decisão do T03; a unicidade por nome do monolito não foi levada |
-| Controllers com `@WebMvcTest` | `MockMvc` com o contexto completo (`DiagnosticoIT`, `PecaControllerIT`, `PerfisIT`) | A regra do `CLAUDE.md` do Execução: um contexto Spring só nos ITs |
+| `nome` da peça sem unicidade | Igual: sem índice em DynamoDB | Decisão do T03; a unicidade por nome da aplicação anterior não foi levada |
+| Controllers com `@WebMvcTest` | `MockMvc` com o contexto completo (`DiagnosticoIT`, `PecaControllerIT`, `PerfisIT`) | Convenção do Execução: um contexto Spring só nos ITs |
 | `spring-boot-starter-cache` para o catálogo do OS | Caffeine direto no `OsCatalogoClient` | O cache é de um método só, com TTL e só para respostas 200 |
 | Campos de peça no `POST`/`PUT /pecas` | A request e a resposta levam `qtdEstoque` (a `qtdDisponivel` e a `qtdReservada` só aparecem na resposta) | O invariante `qtdEstoque = qtdDisponivel + qtdReservada` é do domínio: quem escreve informa só o estoque total |
 | Dois `Put` no mesmo item da transação dão `ValidationException` | No LocalStack voltam como `ConditionalCheckFailed`; na AWS real, `ValidationException` | Diferença do emulador. Por isso a soma por `pecaId` é feita antes, e não há IT para esse caso |

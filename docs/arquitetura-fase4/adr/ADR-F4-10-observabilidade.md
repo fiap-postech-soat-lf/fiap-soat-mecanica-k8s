@@ -7,7 +7,7 @@
 
 ## Contexto
 
-A Saga passa por 4 serviços e por filas, e uma falha pode estar em qualquer salto. Sem correlação, cada serviço só mostra o próprio pedaço. A Fase 3 já usava o Datadog por OTLP (ADR-009 do monolito); a Fase 4 precisa de traces entre serviços, logs ligados à OS e alertas sobre a Saga e as filas.
+A Saga passa por 4 serviços e por filas, e uma falha pode estar em qualquer salto. Sem correlação, cada serviço só mostra o próprio pedaço. A aplicação anterior já usava o Datadog por OTLP; a Fase 4 precisa de traces entre serviços, logs ligados à OS e alertas sobre a Saga e as filas.
 
 A leitura dos dados da F7 (B0 da F8) mostrou três lacunas:
 1. a propagação do agente já atravessa o SQS e o SNS, mas o trace **nasce no `@Scheduled` do outbox**, e não na requisição que criou a mensagem;

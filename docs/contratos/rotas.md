@@ -43,7 +43,7 @@ Erros próprios do OS (`ErrorResponse`):
 | Transição inválida (por exemplo, cancelar uma OS `EM_EXECUCAO`, ou depois de `OrcamentoAprovado`) | 422 | regra de negócio |
 | Conflito de versão | 409 | `CONFLITO_CONCORRENTE` (o cliente repete a operação) |
 
-Saíram do controller do monolito e passaram a ser feitos por evento da Saga, ou foram para outro serviço: `POST /abrir`, `iniciar-execucao`, `enviar-para-aguardar-aprovacao`, `pagar` (Saga), `aprovar-orcamento` e `recusar-orcamento` (Billing) e `tempo-medio` (Execução).
+Saíram do controller da OS da aplicação anterior e passaram a ser feitos por evento da Saga, ou foram para outro serviço: `POST /abrir`, `iniciar-execucao`, `enviar-para-aguardar-aprovacao`, `pagar` (Saga), `aprovar-orcamento` e `recusar-orcamento` (Billing) e `tempo-medio` (Execução).
 
 ## Rotas e perfis do Execução
 
@@ -77,7 +77,7 @@ Erros próprios do Execução (`ErrorResponse`):
 | Transição inválida (por exemplo, incluir prestação numa ordem `EM_EXECUCAO`, ou `PUT /pecas` com estoque abaixo do reservado) | 422 | regra de negócio |
 | Conflito de versão ou de estoque | 409 | `CONFLITO_CONCORRENTE` (o cliente repete a operação) |
 
-Saíram do monolito: `PATCH /prestacao-servico/{id}/...` e `/alocacao-pecas/...` (viraram as rotas aninhadas acima) e `tempo-medio` do controller da OS (agora `GET /execucoes/tempo-medio`).
+Saíram da aplicação anterior: `PATCH /prestacao-servico/{id}/...` e `/alocacao-pecas/...` (viraram as rotas aninhadas acima) e `tempo-medio` do controller da OS (agora `GET /execucoes/tempo-medio`).
 
 ## Rotas e perfis do Billing
 
@@ -108,7 +108,7 @@ Erros próprios do Billing (`ErrorResponse`, exceto o webhook):
 | Mercado Pago fora do ar na nova cobrança (retries esgotados) | 502 | `MERCADOPAGO_INDISPONIVEL` |
 | Webhook com assinatura ausente ou inválida | 401 | corpo vazio (o Mercado Pago repete a notificação) |
 
-Saíram do monolito e viraram evento da Saga ou rota do Billing: `aprovar-orcamento` e `recusar-orcamento` da OS (agora `PATCH /orcamentos/{id}/aprovar` e `/recusar`, com checagem de dono) e `pagar` (webhook do Mercado Pago).
+Saíram da aplicação anterior e viraram evento da Saga ou rota do Billing: `aprovar-orcamento` e `recusar-orcamento` da OS (agora `PATCH /orcamentos/{id}/aprovar` e `/recusar`, com checagem de dono) e `pagar` (webhook do Mercado Pago).
 
 ## Chamadas entre serviços
 

@@ -7,7 +7,7 @@
 
 ## Contexto
 
-Até a Fase 3, a oficina era um monolito Spring Boot (`fiap-soat-mecanica-api`) com um único RDS. A Fase 4 exige pelo menos 3 microsserviços, cada um com repositório, infraestrutura e banco próprios, com ao menos um banco SQL e um NoSQL, comunicação por REST e por mensageria e uma Saga com compensação.
+Antes da Fase 4, a oficina era uma aplicação Spring Boot única, com um único RDS. A Fase 4 exige pelo menos 3 microsserviços, cada um com repositório, infraestrutura e banco próprios, com ao menos um banco SQL e um NoSQL, comunicação por REST e por mensageria e uma Saga com compensação.
 
 O trabalho é individual, em 14 dias, então cada serviço a mais custa tempo de implementação, pipeline e custo de AWS Academy. O corte precisa seguir o domínio, para que a Saga e a propriedade de dados façam sentido, e não só a contagem mínima.
 
