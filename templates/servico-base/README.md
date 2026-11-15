@@ -1,6 +1,6 @@
 # fiap-soat-mecanica-servicobase
 
-Microsserviço **servicobase** da **Fase 4** da Oficina Mecânica do Braia (Tech Challenge FIAP SOAT).
+Microsserviço **servicobase** da **Fase 4** da Oficina Mecânica SOAT15 - LF (Tech Challenge FIAP SOAT).
 
 > 🚧 Gerado a partir do esqueleto `fiap-soat-mecanica-k8s/templates/servico-base/`. As seções com *TODO* são preenchidas na fase do serviço e revisadas na F9.
 
