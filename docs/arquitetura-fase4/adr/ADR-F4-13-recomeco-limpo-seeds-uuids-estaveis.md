@@ -7,11 +7,11 @@
 
 ## Contexto
 
-O monolito tinha uma migration de seed (V9) com usuários, clientes, veículos, serviços, peças e ordens de serviço de teste, todos com UUIDs fixos. Esses UUIDs aparecem em testes, em scripts e em requisições de exemplo. Com a decomposição, cada serviço tem o seu banco (ADR-F4-05), e os dados do monolito estão num banco que a Fase 4 não herda.
+A aplicação anterior tinha uma migration de seed (V9) com usuários, clientes, veículos, serviços, peças e ordens de serviço de teste, todos com UUIDs fixos. Esses UUIDs aparecem em testes, em scripts e em requisições de exemplo. Com a decomposição, cada serviço tem o seu banco (ADR-F4-05), e os dados da aplicação anterior estão num banco que a Fase 4 não herda.
 
 ## Decisão
 
-- **Recomeço limpo:** nenhum dado do monolito é migrado. Cada serviço tem o seu próprio Flyway, com `V1` sempre a mensageria (ADR-F4-04) e as migrations de domínio a partir do `V2`.
+- **Recomeço limpo:** nenhum dado da aplicação anterior é migrado. Cada serviço tem o seu próprio Flyway, com `V1` sempre a mensageria (ADR-F4-04) e as migrations de domínio a partir do `V2`.
 - **Seed por serviço, só com o que é dele**, reaproveitando os UUIDs do V9:
 
   | Serviço | Seed | Conteúdo |
@@ -29,7 +29,7 @@ O monolito tinha uma migration de seed (V9) com usuários, clientes, veículos, 
 
 | Alternativa | Motivo da rejeição |
 |---|---|
-| Migrar os dados do monolito para os 4 bancos | Exigiria um ETL por serviço e a reconstrução de estados de Saga que nunca existiram. O projeto é uma demonstração, e o ambiente é efêmero (destruído a cada janela) |
+| Migrar os dados da aplicação anterior para os 4 bancos | Exigiria um ETL por serviço e a reconstrução de estados de Saga que nunca existiram. O projeto é uma demonstração, e o ambiente é efêmero (destruído a cada janela) |
 | UUIDs novos a cada serviço | Quebraria os exemplos, os testes e os scripts herdados, e cada correção de exemplo viraria uma busca |
 | Manter as OS do V9 no seed do OS | Ficariam sem Saga e sem ordem no Execução, e o histórico delas seria inconsistente com o resto |
 | Seed das peças por Terraform (`aws_dynamodb_table_item`) | Cada `apply` repõe o estoque, apagando o efeito das reservas e das baixas |
@@ -40,4 +40,4 @@ O monolito tinha uma migration de seed (V9) com usuários, clientes, veículos, 
 - Subir o ambiente do zero sempre dá o mesmo conjunto de dados de teste, e o estoque do seed não é reposto numa nova versão do Execução.
 - O seed do Identity inclui um hash de senha de teste. Os arquivos de seed são só para ambientes de demonstração e não devem ser usados em produção.
 - O E2E cria os seus próprios dados (com um `runId`) e não gasta o estoque do seed, para poder rodar quantas vezes for preciso.
-- Os dados de uso do monolito (ordens, pagamentos) são perdidos. É um custo aceito.
+- Os dados de uso da aplicação anterior (ordens, pagamentos) são perdidos. É um custo aceito.

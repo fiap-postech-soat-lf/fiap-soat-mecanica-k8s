@@ -7,7 +7,7 @@
 
 ## Contexto
 
-Os repositórios dependem de valores que outros criam. O CD dos serviços precisa do nome do cluster (`-k8s`) e da URL da API (`-auth`), o OS precisa do ARN do tópico de outro serviço, e todos precisam do bucket de state. Na Fase 3 do grupo, esses valores eram copiados à mão em GitHub Variables. No Academy, a conta pode mudar, e o ambiente é destruído e recriado a cada janela de integração.
+Os repositórios dependem de valores que outros criam. O CD dos serviços precisa do nome do cluster (`-k8s`) e da URL da API (`-auth`), o OS precisa do ARN do tópico de outro serviço, e todos precisam do bucket de state. Antes, esses valores eram copiados à mão em GitHub Variables. No Academy, a conta pode mudar, e o ambiente é destruído e recriado a cada janela de integração.
 
 ## Decisão
 

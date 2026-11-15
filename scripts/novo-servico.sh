@@ -130,8 +130,7 @@ INGRESS="$STAGE/k8s/ingressroute.yaml"
 sed -i '/Trocado pelo novo-servico.sh/d' "$INGRESS"
 sed -i "s#__ROTAS_MATCH__#$match#" "$INGRESS"
 
-# 6) CLAUDE.md (ignorado pelo gitignore global: fica so local) e LICENSE do -k8s.
-mv "$STAGE/CLAUDE.md.tmpl" "$STAGE/CLAUDE.md"
+# 6) LICENSE do -k8s.
 cp "$RAIZ/LICENSE" "$STAGE/LICENSE"
 
 # 7) Conferencias antes de copiar para o destino.

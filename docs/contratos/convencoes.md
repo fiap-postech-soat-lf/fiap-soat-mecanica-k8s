@@ -73,9 +73,9 @@ Os eventos de `mecanica-os-eventos` também vão para os logs do Datadog. O Iden
 | `groupId` | `br.com.fiap.soat` |
 | `artifactId` | `fiap-soat-mecanica-<svc>` |
 | Pacote base | `br.com.fiap.soat.mecanica.<svc>` (`identity`, `os`, `billing`, `execucao`; o `-auth` usa `...mecanica.auth`) |
-| Camadas | Mesmas do monolito: `domain/`, `application/`, `adapters/in|out/`, `config/`. `domain` e `application` não dependem de `adapters` nem de Spring Web |
+| Camadas | Hexagonal: `domain/`, `application/`, `adapters/in|out/`, `config/`. `domain` e `application` não dependem de `adapters` nem de Spring Web |
 | Classe principal | `<Svc>Application` (`IdentityApplication`, `OsApplication`, `BillingApplication`, `ExecucaoApplication`) |
-| Spring Boot | 3.5.14 (igual ao monolito) |
+| Spring Boot | 3.5.14 |
 | Java | 21 (virtual threads habilitadas: `spring.threads.virtual.enabled=true`) |
 
 ### 2.3 Portas locais

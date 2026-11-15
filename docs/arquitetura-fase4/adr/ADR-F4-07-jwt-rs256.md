@@ -17,8 +17,8 @@ O ambiente é destruído e recriado a cada janela. O par de chaves precisa nasce
 
 - **Formato:** RS256, `kid=mecanica-identity-v1`, claims e TTL de 1 h em `docs/contratos/jwt.md`.
 - **Dois logins públicos** no Identity, com o mesmo corpo de resposta `{accessToken, tokenType, expiresIn}`: `POST /auth/login` (e-mail e senha, funcionário) e `POST /auth/cpf` (cliente PF).
-- **Emissão atrás de uma porta:** `TokenIssuerPort` em `application/` e o adapter em `adapters/out/security/`. Isso corrige a dependência de `application` para `adapters` que o monolito tinha. O `JwtService` HS256 não foi portado.
-- **Erros sem enumeração:** no login de staff, e-mail inexistente, senha errada e usuário inativo dão o mesmo 401. No login por CPF, formato inválido é 400, e cliente inexistente, inativo ou PJ é 401. O monolito devolvia 404 para e-mail inexistente.
+- **Emissão atrás de uma porta:** `TokenIssuerPort` em `application/` e o adapter em `adapters/out/security/`. Isso corrige a dependência de `application` para `adapters` que a aplicação anterior tinha. O `JwtService` HS256 não foi portado.
+- **Erros sem enumeração:** no login de staff, e-mail inexistente, senha errada e usuário inativo dão o mesmo 401. No login por CPF, formato inválido é 400, e cliente inexistente, inativo ou PJ é 401. A aplicação anterior devolvia 404 para e-mail inexistente.
 - **Chave ausente:** o serviço sobe e os logins respondem 503 (`EMISSOR_INDISPONIVEL`).
 - **Par trocado:** com as duas chaves presentes que não formam par, a aplicação não sobe (`par_jwt_inconsistente`). O rollout do CD fica vermelho, em vez de ir ao ar rejeitando todo token.
 - **Quem chama, sem banco:** a porta `UsuarioAutenticadoPort` expõe `sub`, tipo e cargo a partir do token. O `sub` é o `usuario_id` do cliente cadastrado.
@@ -38,7 +38,7 @@ O ambiente é destruído e recriado a cada janela. O par de chaves precisa nasce
 
 | Alternativa | Motivo da rejeição |
 |---|---|
-| HS256 com segredo compartilhado | Todo validador teria o segredo e poderia emitir token. É o que o monolito fazia |
+| HS256 com segredo compartilhado | Todo validador teria o segredo e poderia emitir token. É o que a aplicação anterior fazia |
 | Token de serviço para as chamadas entre serviços | Exigiria um novo tipo de principal no contrato, no authorizer e nos 4 validadores. Repassar o JWT de quem chamou reaproveita o que já existe (F3-a) |
 | Subir sem validar o par de chaves | Um par trocado só apareceria como 401/403 em tudo, depois do deploy |
 

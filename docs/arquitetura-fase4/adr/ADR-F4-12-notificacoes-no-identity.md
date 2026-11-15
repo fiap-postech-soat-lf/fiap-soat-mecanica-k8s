@@ -7,7 +7,7 @@
 
 ## Contexto
 
-No monolito, a mudança de situação da OS enviava e-mail direto. Com a decomposição, o e-mail do cliente é dado pessoal e pertence ao Identity (LGPD). O OS não deve guardá-lo nem chamar o Identity a cada mudança de situação.
+Na aplicação anterior, a mudança de situação da OS enviava e-mail direto. Com a decomposição, o e-mail do cliente é dado pessoal e pertence ao Identity (LGPD). O OS não deve guardá-lo nem chamar o Identity a cada mudança de situação.
 
 ## Decisão
 
