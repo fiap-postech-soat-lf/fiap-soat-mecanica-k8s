@@ -105,7 +105,7 @@ A taxa acumulada passa a ser de ≈ **US$ 0,28/h** (US$ 2,40 ÷ ≈ 8,6 h). É o
 
 **Janela da F8 (D12, 2026-11-09/10):** o mesmo ambiente da F7, com o collector OpenTelemetry enviando traces, métricas e logs ao Datadog (trial). Ficou ligado de 00:13:51 a 02:50:32 UTC, **≈ 2 h 37** (≈ 2,6 h): subida, E2E, traces, dashboards e monitores como código e `destruir-ambiente.sh` sem órfãos (sem o `--esgotar`, corte 3). O painel foi lido em 2026-11-14 (D17), porque não houve janela de 11-10 a 11-13: "Used US$ 4 of US$ 50", ou seja, **saldo de US$ 46,00**. A queda de US$ 0,80 (± US$ 0,05) desde os US$ 46,80 anteriores é o custo da janela: **US$ 0,80** (≈ **US$ 0,31/h**), dentro dos US$ 0,76–0,86 estimados. O **total do projeto até a F8 é US$ 4,00** (saldo US$ 46,00), e a taxa acumulada fica em ≈ **US$ 0,29/h** (US$ 4,00 ÷ ≈ 13,6 h). O Datadog não entra na conta do Academy (trial).
 
-**Janela da F9 (D17, 2026-11-14), estimada:** subida (~56 min), preparação do Datadog e do Postman (~20 min), gravação do vídeo (~65 min), logs (~5 min) e destruição (~23 min), ou seja, **≈ 2 h 50–3 h 30** ligado. Pela taxa medida de ≈ US$ 0,29–0,33/h, isso dá **≈ US$ 0,85–1,15**. Uma segunda janela de reserva (D18) custaria mais ≈ US$ 0,60–1,00, conforme os blocos a regravar. O custo medido entra aqui depois da virada do dia.
+**Janela da F9 (D17, 2026-11-14/15), estimada:** o ambiente ficou ligado de ≈ 18:09Z a ≈ 01:52Z, **≈ 7 h 43**, mais que o dobro das ≈ 3 h 30 planejadas, por três falhas do CI do V4 (LocalStack e `SONAR_TOKEN` com 403), pela renovação do Lab às ≈ 22:00Z e por uma DLQ reenvenenada para o V5. Pela taxa de US$ 0,29–0,33/h, o custo estimado é **≈ US$ 2,2–2,6**. O painel lido em 2026-11-15 mostrou "Used US$ 4.7" (+ US$ 0,70, ≈ US$ 0,09/h), valor tido como defasado e **não usado**, por destoar das sete janelas anteriores. O `verificar-orfaos.sh` saiu com 0 ("Nenhum recurso orfao"). O **total estimado do projeto é ≈ US$ 6,2–6,6**, abaixo dos US$ 8 desta RFC.
 
 ## Decisão
 
@@ -118,9 +118,9 @@ A taxa acumulada passa a ser de ≈ **US$ 0,28/h** (US$ 2,40 ÷ ≈ 8,6 h). É o
   | D7, D8, CP2, D9 (F5) e D10 (F6) (medido) | ≈ 8,6 | 0,24–0,33 | 2,40 |
   | D11 (F7: E2E, caos, DLQ) (medido no D12) | ≈ 2,4 | 0,33 | 0,80 |
   | D12 (F8: trace, logs, dashboards e monitores; sem o `--esgotar`) (medido no D17) | ≈ 2,6 | 0,31 | 0,80 |
-  | D17 (F9: gravação) (estimado; a medir) | ~3,2 | 0,29–0,33 | ≈ 0,85–1,15 |
-  | D18 (reserva para regravar blocos) (só se necessária) | ~1,5 | 0,29–0,33 | ≈ 0,60–1,00 |
-  | **Total** | **~16,8 a ~18,3** | | **≈ US$ 4,85–5,15 (até ≈ US$ 6,15 com a reserva)** |
+  | D17 (F9: gravação) (estimado; painel defasado) | ≈ 7,7 | 0,29–0,33 | ≈ 2,2–2,6 |
+  | D18 (reserva para regravar blocos) (não usada) | 0 | | 0 |
+  | **Total** | **≈ 21,3** | | **≈ US$ 6,2–6,6** |
 
   Mesmo com o dobro das horas das janelas que faltam (falhas e ensaio), o total fica abaixo de US$ 10, um quinto do crédito. O risco real é esquecer o ambiente ligado (≈ US$ 6,70 por dia a US$ 0,28/h), e não o custo das janelas.
 
