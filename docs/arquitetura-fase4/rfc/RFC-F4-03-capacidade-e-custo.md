@@ -3,7 +3,7 @@
 - **Status:** Aprovado
 - **Data:** 2026-11-04 (números medidos na janela de integração da F2, D7). Atualizada em 2026-11-06 com o custo medido do D8 e do CP2 (F5, T00) em 2026-11-07 com o da janela da F5 (F6, T00 e T08) e em 2026-11-08 com o da janela da F6 (F7, T00 e T04) em 2026-11-09 com o da janela da F7 (F8, T00) e em 2026-11-14 com o da janela da F8 (F9, T00)
 - **Escopo:** `-k8s` (cluster e scripts do ambiente) e o planejamento das janelas F3–F9
-- **Base:** RFC-001 do `fiap-soat-mecanica-api-k8s` do grupo (EKS no Learner Lab), que continua valendo para as restrições do Academy
+- **Base:** a RFC anterior de EKS no Learner Lab, que continua valendo para as restrições do Academy
 
 ## Resumo
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cria e configura o bucket S3 de state do Terraform na conta AWS ativa (um por conta,
 # compartilhado pelos 7 repos). Idempotente: pode rodar de novo, so reaplica a configuracao.
-# Adaptado de fiap-soat-mecanica-api-k8s/bootstrap/create-state-bucket.sh (Fase 3).
+# Baseado em um script anterior de criacao do bucket de state.
 #
 # Uso: scripts/bootstrap-state.sh [--dry-run]
 # Variaveis: AWS_REGION (padrao us-east-1), AWS_PROFILE (padrao do AWS CLI)

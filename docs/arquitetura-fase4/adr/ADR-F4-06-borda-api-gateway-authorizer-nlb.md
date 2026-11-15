@@ -4,7 +4,7 @@
 - **Data:** 2026-11-04 (implementado na F2 e validado na janela de integração do D7)
 - **Escopo:** `-auth` (API Gateway e authorizer), `-k8s` (NLB e Traefik) e os 4 serviços (rotas e validação do JWT)
 - **Implementação:** `fiap-soat-mecanica-auth/infra/api.tf` e `lambda.tf`; `fiap-soat-mecanica-k8s/terraform/nlb.tf` e `traefik.tf`; `k8s/echo.yaml` (diagnóstico); `scripts/smoke-borda.sh`
-- **Substitui:** ADR-003 do `fiap-soat-mecanica-api-k8s` do grupo (Traefik como API Gateway dentro do cluster)
+- **Substitui:** a decisão anterior de usar o Traefik como API Gateway dentro do cluster
 
 ## Contexto
 

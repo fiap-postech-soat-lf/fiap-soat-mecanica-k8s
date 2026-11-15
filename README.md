@@ -1,8 +1,8 @@
 # fiap-soat-mecanica-k8s
 
-Infraestrutura compartilhada da **Fase 4** da Oficina Mecânica do Braia (Tech Challenge FIAP SOAT): cluster EKS e add-ons, workflows reutilizáveis de CI/CD, template dos microsserviços, ambiente local e documentação de arquitetura.
+Infraestrutura compartilhada da **Fase 4** da Oficina Mecânica SOAT15 - LF (Tech Challenge FIAP SOAT): cluster EKS e add-ons, workflows reutilizáveis de CI/CD, template dos microsserviços, ambiente local e documentação de arquitetura.
 
-Visão geral da arquitetura: [diagrama da AWS](docs/arquitetura-fase4/diagrama/arquitetura-aws-fase4.png) (4 serviços, 3 RDS Postgres e DynamoDB, SNS + SQS, API Gateway com Lambda Authorizer, Traefik no EKS e Datadog). Decisões em [`docs/arquitetura-fase4/adr/`](docs/arquitetura-fase4/adr/README.md) e RFCs em [`docs/arquitetura-fase4/rfc/`](docs/arquitetura-fase4/rfc/). Vídeo da entrega: *link entra depois do upload*.
+Visão geral da arquitetura: [diagrama da AWS](docs/arquitetura-fase4/diagrama/arquitetura-aws-fase4.png) (4 serviços, 3 RDS Postgres e DynamoDB, SNS + SQS, API Gateway com Lambda Authorizer, Traefik no EKS e Datadog). Decisões em [`docs/arquitetura-fase4/adr/`](docs/arquitetura-fase4/adr/README.md) e RFCs em [`docs/arquitetura-fase4/rfc/`](docs/arquitetura-fase4/rfc/). Vídeo da entrega: [assistir no Vimeo](https://vimeo.com/1246945589).
 
 ## Repositórios da Fase 4
 
